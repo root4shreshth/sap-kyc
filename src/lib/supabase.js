@@ -1,13 +1,28 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+// Lazy-initialized Supabase client — avoids crash during Netlify build
+// when env vars aren't available at build time
+let _supabase = null;
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.warn('[SUPABASE] Missing SUPABASE_URL or SUPABASE_SERVICE_KEY');
+export function getSupabase() {
+  if (!_supabase) {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY environment variables');
+    }
+
+    _supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  }
+  return _supabase;
 }
 
-// Use service role key for server-side operations (bypasses RLS)
-export const supabase = createClient(supabaseUrl || '', supabaseServiceKey || '', {
-  auth: { persistSession: false, autoRefreshToken: false },
+// For backward compatibility — lazy proxy
+export const supabase = new Proxy({}, {
+  get(_, prop) {
+    return getSupabase()[prop];
+  },
 });
