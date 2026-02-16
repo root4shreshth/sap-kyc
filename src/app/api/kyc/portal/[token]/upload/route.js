@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { SHEETS, getRows, findRowIndex, updateRow, appendRow } from '@/lib/sheets';
-import { uploadFile } from '@/lib/drive';
+import { getKycByTokenHash, createKycDoc, updateKycStatus, createAuditEntry } from '@/lib/db';
+import { uploadFile } from '@/lib/storage';
 import { hashToken } from '@/lib/token';
 import { isValidFileType, MAX_FILE_SIZE } from '@/lib/auth';
 
@@ -8,8 +8,7 @@ export async function POST(request, { params }) {
   try {
     const { token } = await params;
     const tokenH = hashToken(token);
-    const rows = await getRows(SHEETS.KYC);
-    const kyc = rows.find((r) => r.tokenHash === tokenH);
+    const kyc = await getKycByTokenHash(tokenH);
 
     if (!kyc) {
       return NextResponse.json({ error: 'Invalid or expired link' }, { status: 404 });
@@ -30,7 +29,6 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'No files uploaded' }, { status: 400 });
     }
 
-    const now = new Date().toISOString();
     const uploaded = [];
 
     for (let i = 0; i < files.length; i++) {
@@ -44,22 +42,32 @@ export async function POST(request, { params }) {
 
       const docType = docTypes[i] || 'Other';
       const buffer = Buffer.from(await file.arrayBuffer());
-      const safeName = `${kyc.id}_${docType}_${Date.now()}_${file.name}`;
 
-      const driveResult = await uploadFile(buffer, safeName, file.type);
+      // Upload to Supabase Storage
+      const { storagePath } = await uploadFile(buffer, file.name, file.type, kyc.id);
 
-      // KYC_Docs columns: kycId | docType | driveFileId | fileName | uploadedAt
-      await appendRow(SHEETS.KYC_DOCS, [kyc.id, docType, driveResult.fileId, file.name, now]);
+      // Record in kyc_docs table
+      await createKycDoc({
+        kycId: kyc.id,
+        docType,
+        storagePath,
+        fileName: file.name,
+        mimeType: file.type,
+        fileSize: file.size,
+      });
+
       uploaded.push({ docType, fileName: file.name });
     }
 
     // Update KYC status to Submitted
-    const rowIndex = await findRowIndex(SHEETS.KYC, 0, kyc.id);
-    if (rowIndex !== -1) {
-      await updateRow(SHEETS.KYC, rowIndex, { G: 'Submitted', K: now });
-    }
+    await updateKycStatus(kyc.id, { status: 'Submitted', remarks: '' });
 
-    await appendRow(SHEETS.AUDIT, [now, 'KYC_DOCUMENTS_SUBMITTED', 'client', kyc.id, `${uploaded.length} documents uploaded`]);
+    await createAuditEntry({
+      action: 'KYC_DOCUMENTS_SUBMITTED',
+      actor: 'client',
+      kycId: kyc.id,
+      details: `${uploaded.length} documents uploaded`,
+    });
 
     return NextResponse.json({ message: 'Documents uploaded successfully', files: uploaded });
   } catch (err) {

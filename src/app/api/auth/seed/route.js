@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { SHEETS, getRows, appendRow } from '@/lib/sheets';
+import { getUserByEmail, createUser } from '@/lib/db';
 import { isValidEmail } from '@/lib/auth';
 
 export async function POST(request) {
@@ -20,13 +20,13 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Role must be Admin or KYC Team' }, { status: 400 });
     }
 
-    const users = await getRows(SHEETS.USERS);
-    if (users.find((u) => u.email === email)) {
+    const existing = await getUserByEmail(email);
+    if (existing) {
       return NextResponse.json({ error: 'User already exists' }, { status: 409 });
     }
 
     const hash = await bcrypt.hash(password, 12);
-    await appendRow(SHEETS.USERS, [email, hash, role, new Date().toISOString()]);
+    await createUser({ email, passwordHash: hash, role });
 
     return NextResponse.json({ message: 'User created' });
   } catch (err) {

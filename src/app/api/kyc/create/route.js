@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth, isValidEmail } from '@/lib/auth';
-import { SHEETS, appendRow } from '@/lib/sheets';
+import { createKyc, createAuditEntry } from '@/lib/db';
 import { generateToken, hashToken } from '@/lib/token';
 import { sendKycInvite, isSmtpConfigured } from '@/lib/email';
 
@@ -22,14 +22,17 @@ export async function POST(request) {
     const rawToken = generateToken();
     const tokenH = hashToken(rawToken);
     const expiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    const now = new Date().toISOString();
 
-    // KYC columns: id | clientName | companyName | email | tokenHash | tokenExpiry | status | remarks | createdBy | createdAt | updatedAt
-    await appendRow(SHEETS.KYC, [
-      id, clientName, companyName, email, tokenH, expiry, 'Pending', '', user.email, now, now,
-    ]);
+    await createKyc({
+      id, clientName, companyName, email,
+      tokenHash: tokenH, tokenExpiry: expiry,
+      status: 'Pending', remarks: '', createdBy: user.email,
+    });
 
-    await appendRow(SHEETS.AUDIT, [now, 'KYC_CREATED', user.email, id, `Client: ${clientName}, Company: ${companyName}`]);
+    await createAuditEntry({
+      action: 'KYC_CREATED', actor: user.email, kycId: id,
+      details: `Client: ${clientName}, Company: ${companyName}`,
+    });
 
     const link = `${process.env.APP_BASE_URL}/kyc/submit/${rawToken}`;
     await sendKycInvite({ to: email, clientName, companyName, link });

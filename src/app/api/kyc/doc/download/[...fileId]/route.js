@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getFileStream, getFileMetadata } from '@/lib/drive';
+import { downloadFile, getFileMetadata } from '@/lib/storage';
 
 export async function GET(request, { params }) {
   const { error } = requireAuth(request, ['Admin', 'KYC Team']);
@@ -8,15 +8,11 @@ export async function GET(request, { params }) {
 
   try {
     const { fileId } = await params;
-    const meta = await getFileMetadata(fileId);
-    const stream = await getFileStream(fileId);
+    // fileId is an array of path segments due to catch-all route
+    const storagePath = Array.isArray(fileId) ? fileId.join('/') : fileId;
 
-    // Collect stream into buffer for Next.js Response
-    const chunks = [];
-    for await (const chunk of stream) {
-      chunks.push(chunk);
-    }
-    const buffer = Buffer.concat(chunks);
+    const meta = await getFileMetadata(storagePath);
+    const { buffer } = await downloadFile(storagePath);
 
     return new NextResponse(buffer, {
       headers: {

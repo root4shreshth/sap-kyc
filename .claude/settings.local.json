@@ -9,7 +9,25 @@
       "Bash(curl:*)",
       "Bash(netstat:*)",
       "Bash(taskkill:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npm install:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGRlbW8uY29tIiwicm9sZSI6IkFkbWluIiwiaWF0IjoxNzcxMjY5NzUxLCJleHAiOjE3NzEyOTg1NTF9.F1Jtp7auHT9AbI59oNHBKEsu4Wal1IAzkuTiFnyTxPU\")",
+      "Bash(__NEW_LINE_f4b115b835d1feda__ echo \"=== Stats ===\")",
+      "Bash(__NEW_LINE_f4b115b835d1feda__ echo \"=== List ===\")",
+      "Bash(__NEW_LINE_f4b115b835d1feda__ echo \"=== Create KYC ===\")",
+      "Bash(PORTAL_TOKEN=\"2cfd564c772e6961af0431a563afa53f13bcd697a42a1daf702d8caa8c5b2083\")",
+      "Bash(__NEW_LINE_82de72898cdabaa8__ echo \"=== Portal Validate ===\")",
+      "Bash(__NEW_LINE_82de72898cdabaa8__ echo \"=== List After Create ===\")",
+      "Bash(PORTAL_TOKEN=\"de99202a966b2319cc9ee8b5ebb9932e26bfe27ed758063e754fbd9d111e533f\")",
+      "Bash(KYC_ID=\"92ad8b42-ab74-40f1-93b8-4f7590d0cfb6\":*)",
+      "Bash(__NEW_LINE_8497b875a8e05504__ echo \"=== Get Docs ===\")",
+      "Bash(__NEW_LINE_8497b875a8e05504__ echo \"=== Stats ===\")",
+      "Bash(FILE_PATH=\"92ad8b42-ab74-40f1-93b8-4f7590d0cfb6/1771269890842_test_doc.pdf\":*)",
+      "Bash(__NEW_LINE_f09135e88dbf3836__ echo \"=== Download ===\")",
+      "Bash(__NEW_LINE_645165ebb51e16b4__ echo \"=== Approve ===\")",
+      "Bash(__NEW_LINE_645165ebb51e16b4__ echo \"=== Final Stats ===\")",
+      "Bash(npm run build:*)"
     ]
   }
 }
