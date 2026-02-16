@@ -30,7 +30,13 @@
       "Bash(npm run build:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push)"
+      "Bash(git push)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGRlbW8uY29tIiwicm9sZSI6IkFkbWluIiwiaWF0IjoxNzcxMjcxMjUwLCJleHAiOjE3NzEzMDAwNTB9.RfY23yvXxSYE9l5AHkEvzYjljkCNrcYewda3KBOAkmo\")",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJlbWFpbCI6ImFkbWluQGRlbW8uY29tIiwicm9sZSI6IkFkbWluIiwiaWF0IjoxNzcxMjcxNTU5LCJleHAiOjE3NzEzMDAzNTl9.72orr1sgo3tGVXx_ardTgF3wvcDM9c2m5wUofpeUkRQ\")",
+      "Bash(npx netlify-cli env:list:*)",
+      "Bash(npx netlify:*)"
     ]
   }
 }
