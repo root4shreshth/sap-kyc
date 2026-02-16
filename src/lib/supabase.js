@@ -19,10 +19,3 @@ export function getSupabase() {
   }
   return _supabase;
 }
-
-// For backward compatibility — lazy proxy
-export const supabase = new Proxy({}, {
-  get(_, prop) {
-    return getSupabase()[prop];
-  },
-});

@@ -1,8 +1,9 @@
-import { supabase } from './supabase';
+import { getSupabase } from './supabase';
 
 // ==================== USERS ====================
 
 export async function getUserByEmail(email) {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('users')
     .select('*')
@@ -13,6 +14,7 @@ export async function getUserByEmail(email) {
 }
 
 export async function createUser({ email, passwordHash, role }) {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('users')
     .insert({ email, password_hash: passwordHash, role })
@@ -25,6 +27,7 @@ export async function createUser({ email, passwordHash, role }) {
 // ==================== KYC ====================
 
 export async function createKyc({ id, clientName, companyName, email, tokenHash, tokenExpiry, status, remarks, createdBy }) {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('kyc')
     .insert({
@@ -45,6 +48,7 @@ export async function createKyc({ id, clientName, companyName, email, tokenHash,
 }
 
 export async function getAllKyc() {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('kyc')
     .select('id, client_name, company_name, email, status, remarks, created_by, created_at, updated_at')
@@ -64,6 +68,7 @@ export async function getAllKyc() {
 }
 
 export async function getKycByTokenHash(tokenHash) {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('kyc')
     .select('*')
@@ -87,6 +92,7 @@ export async function getKycByTokenHash(tokenHash) {
 }
 
 export async function getKycById(id) {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('kyc')
     .select('*')
@@ -110,6 +116,7 @@ export async function getKycById(id) {
 }
 
 export async function updateKycStatus(id, { status, remarks }) {
+  const supabase = getSupabase();
   const { error } = await supabase
     .from('kyc')
     .update({
@@ -122,6 +129,7 @@ export async function updateKycStatus(id, { status, remarks }) {
 }
 
 export async function getKycStats() {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('kyc')
     .select('status');
@@ -136,6 +144,7 @@ export async function getKycStats() {
 // ==================== KYC_DOCS ====================
 
 export async function createKycDoc({ kycId, docType, storagePath, fileName, mimeType, fileSize }) {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('kyc_docs')
     .insert({
@@ -153,6 +162,7 @@ export async function createKycDoc({ kycId, docType, storagePath, fileName, mime
 }
 
 export async function getDocsByKycId(kycId) {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('kyc_docs')
     .select('*')
@@ -171,6 +181,7 @@ export async function getDocsByKycId(kycId) {
 // ==================== AUDIT ====================
 
 export async function createAuditEntry({ action, actor, kycId, details }) {
+  const supabase = getSupabase();
   const { error } = await supabase
     .from('audit_log')
     .insert({

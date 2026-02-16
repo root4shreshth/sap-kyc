@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { getSupabase } from './supabase';
 
 const BUCKET = 'kyc-documents';
 
@@ -7,6 +7,7 @@ const BUCKET = 'kyc-documents';
  * Returns { storagePath, fileName }.
  */
 export async function uploadFile(buffer, fileName, mimeType, kycId) {
+  const supabase = getSupabase();
   const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
   const storagePath = `${kycId}/${Date.now()}_${safeName}`;
 
@@ -26,6 +27,7 @@ export async function uploadFile(buffer, fileName, mimeType, kycId) {
  * Returns { buffer, mimeType }.
  */
 export async function downloadFile(storagePath) {
+  const supabase = getSupabase();
   const { data, error } = await supabase.storage
     .from(BUCKET)
     .download(storagePath);
@@ -41,6 +43,7 @@ export async function downloadFile(storagePath) {
  * Get file metadata from the kyc_docs table.
  */
 export async function getFileMetadata(storagePath) {
+  const supabase = getSupabase();
   const { data, error } = await supabase
     .from('kyc_docs')
     .select('file_name, mime_type, file_size')
@@ -59,6 +62,7 @@ export async function getFileMetadata(storagePath) {
  * Ensure the storage bucket exists. Called from setup route.
  */
 export async function ensureBucket() {
+  const supabase = getSupabase();
   const { data: buckets } = await supabase.storage.listBuckets();
   const exists = buckets?.some(b => b.name === BUCKET);
   if (!exists) {

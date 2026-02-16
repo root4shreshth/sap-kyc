@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { getSupabase } from '@/lib/supabase';
 import { ensureBucket } from '@/lib/storage';
 
 const SCHEMA_SQL = `
@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 export async function POST() {
   try {
+    const supabase = getSupabase();
     const results = { tables: {}, storage: '' };
 
     // Create tables via raw SQL using Supabase's rpc
