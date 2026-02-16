@@ -27,7 +27,10 @@
       "Bash(__NEW_LINE_f09135e88dbf3836__ echo \"=== Download ===\")",
       "Bash(__NEW_LINE_645165ebb51e16b4__ echo \"=== Approve ===\")",
       "Bash(__NEW_LINE_645165ebb51e16b4__ echo \"=== Final Stats ===\")",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)"
     ]
   }
 }
