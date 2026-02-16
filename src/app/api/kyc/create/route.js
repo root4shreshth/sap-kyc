@@ -34,7 +34,12 @@ export async function POST(request) {
       details: `Client: ${clientName}, Company: ${companyName}`,
     });
 
-    const link = `${process.env.APP_BASE_URL}/kyc/submit/${rawToken}`;
+    // Build portal link — detect base URL dynamically from request headers
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
+    const proto = request.headers.get('x-forwarded-proto') || 'https';
+    const detectedBase = host ? `${proto}://${host}` : null;
+    const baseUrl = detectedBase || process.env.APP_BASE_URL || 'http://localhost:3000';
+    const link = `${baseUrl.replace(/\/+$/, '')}/kyc/submit/${rawToken}`;
     await sendKycInvite({ to: email, clientName, companyName, link });
 
     const response = { id, portalLink: link };
