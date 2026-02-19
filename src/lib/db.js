@@ -141,29 +141,227 @@ export async function getKycStats() {
   return stats;
 }
 
-// ==================== KYC FORM DATA ====================
+// ==================== KYC FORM DATA (Normalized Tables) ====================
+
+// Scalar mapping: DB column -> { section (dot-path or null), field, type }
+const SCALAR_MAP = {
+  last_saved:                 { section: null, field: 'lastSaved' },
+  version:                    { section: null, field: 'version' },
+
+  bi_business_name:           { section: 'businessInfo', field: 'businessName' },
+  bi_tax_registration_no:     { section: 'businessInfo', field: 'taxRegistrationNo' },
+  bi_address:                 { section: 'businessInfo', field: 'address' },
+  bi_city:                    { section: 'businessInfo', field: 'city' },
+  bi_province_state:          { section: 'businessInfo', field: 'provinceState' },
+  bi_postal_zip_code:         { section: 'businessInfo', field: 'postalZipCode' },
+  bi_country:                 { section: 'businessInfo', field: 'country' },
+  bi_phone:                   { section: 'businessInfo', field: 'phone' },
+  bi_website:                 { section: 'businessInfo', field: 'website' },
+  bi_date_of_incorporation:   { section: 'businessInfo', field: 'dateOfIncorporation' },
+  bi_years_in_business:       { section: 'businessInfo', field: 'yearsInBusiness' },
+  bi_nature_of_business:      { section: 'businessInfo', field: 'natureOfBusiness' },
+  bi_monthly_credit_required: { section: 'businessInfo', field: 'monthlyCreditRequired' },
+  bi_annual_sales:            { section: 'businessInfo', field: 'annualSales' },
+  bi_number_of_employees:     { section: 'businessInfo', field: 'numberOfEmployees' },
+
+  bi_type_corporation:        { section: 'businessInfo.businessType', field: 'corporation', type: 'boolean' },
+  bi_type_incorporated:       { section: 'businessInfo.businessType', field: 'incorporated', type: 'boolean' },
+  bi_type_partnership:        { section: 'businessInfo.businessType', field: 'partnership', type: 'boolean' },
+  bi_type_sole_proprietorship:{ section: 'businessInfo.businessType', field: 'soleProprietorship', type: 'boolean' },
+
+  mi_manager_name:            { section: 'managerInfo', field: 'managerName' },
+  mi_manager_email:           { section: 'managerInfo', field: 'managerEmail' },
+  mi_manager_phone:           { section: 'managerInfo', field: 'managerPhone' },
+  mi_manager_mobile:          { section: 'managerInfo', field: 'managerMobile' },
+  mi_ap_contact_name:         { section: 'managerInfo', field: 'apContactName' },
+  mi_ap_contact_email:        { section: 'managerInfo', field: 'apContactEmail' },
+  mi_ap_contact_phone:        { section: 'managerInfo', field: 'apContactPhone' },
+  mi_ap_contact_mobile:       { section: 'managerInfo', field: 'apContactMobile' },
+
+  cd_company_name:            { section: 'companyDetails', field: 'companyName' },
+  cd_trade_license_no:        { section: 'companyDetails', field: 'tradeLicenseNo' },
+  cd_trade_license_expiry:    { section: 'companyDetails', field: 'tradeLicenseExpiry' },
+  cd_mqa_registration_no:     { section: 'companyDetails', field: 'mqaRegistrationNo' },
+  cd_vat_registration_no:     { section: 'companyDetails', field: 'vatRegistrationNo' },
+  cd_company_address:         { section: 'companyDetails', field: 'companyAddress' },
+  cd_office_phone:            { section: 'companyDetails', field: 'officePhone' },
+  cd_email:                   { section: 'companyDetails', field: 'email' },
+  cd_website_social_media:    { section: 'companyDetails', field: 'websiteSocialMedia' },
+
+  br_bank_name:               { section: 'bankReference', field: 'bankName' },
+  br_address:                 { section: 'bankReference', field: 'address' },
+  br_city:                    { section: 'bankReference', field: 'city' },
+  br_province_state:          { section: 'bankReference', field: 'provinceState' },
+  br_postal_zip_code:         { section: 'bankReference', field: 'postalZipCode' },
+  br_contact_name:            { section: 'bankReference', field: 'contactName' },
+  br_email:                   { section: 'bankReference', field: 'email' },
+  br_years_relationship:      { section: 'bankReference', field: 'yearsRelationship' },
+  br_phone:                   { section: 'bankReference', field: 'phone' },
+
+  cc_neg_social_media_check:  { section: 'complianceChecklist', field: 'negSocialMediaConductCheck', type: 'boolean' },
+  cc_banking_credibility:     { section: 'complianceChecklist', field: 'bankingCredibilityCheck', type: 'boolean' },
+  cc_regulatory_approval:     { section: 'complianceChecklist', field: 'regulatoryApprovalCheck', type: 'boolean' },
+  cc_additional_background:   { section: 'complianceChecklist', field: 'additionalBackgroundCheck', type: 'boolean' },
+  cc_labor_safety_license:    { section: 'complianceChecklist', field: 'laborSafetyLicenseCheck', type: 'boolean' },
+  cc_licensing_permit:        { section: 'complianceChecklist', field: 'licensingPermitCheck', type: 'boolean' },
+
+  decl_info_accurate:         { section: 'declaration', field: 'infoAccurate', type: 'boolean' },
+  decl_authorize_verification:{ section: 'declaration', field: 'authorizeVerification', type: 'boolean' },
+  decl_signature_name:        { section: 'declaration', field: 'signatureName' },
+  decl_signature_position:    { section: 'declaration', field: 'signaturePosition' },
+  decl_signature_date:        { section: 'declaration', field: 'signatureDate' },
+};
+
+// Array tables: table name, JSON key, { db_column: 'jsonField' }
+const ARRAY_TABLES = [
+  {
+    table: 'kyc_proprietors',
+    jsonKey: 'proprietors',
+    columns: { name: 'name', title: 'title', address: 'address', email: 'email', phone: 'phone', mobile: 'mobile' },
+  },
+  {
+    table: 'kyc_ownership_management',
+    jsonKey: 'ownershipManagement',
+    columns: { name: 'name', designation: 'designation', nationality: 'nationality', uae_id: 'uaeId', passport_no: 'passportNo', shareholding_percent: 'shareholdingPercent', contact_no: 'contactNo', email: 'email', social_media: 'socialMedia' },
+  },
+  {
+    table: 'kyc_banking_checks',
+    jsonKey: 'bankingChecks',
+    columns: { bank_name: 'bankName', branch: 'branch', account_no: 'accountNo', iban: 'iban', swift: 'swift', bank_contact: 'bankContact', reputation_check: 'reputationCheck', notes: 'notes' },
+  },
+  {
+    table: 'kyc_supplier_references',
+    jsonKey: 'supplierReferences',
+    columns: { name: 'name', address: 'address', city: 'city', province_state: 'provinceState', postal_zip_code: 'postalZipCode', country: 'country', phone: 'phone', contact: 'contact', highest_credit: 'highestCredit', payment_terms: 'paymentTerms' },
+  },
+  {
+    table: 'kyc_trade_references',
+    jsonKey: 'tradeReferences',
+    columns: { customer_supplier: 'customerSupplier', contact: 'contact', phone_email: 'phoneEmail', type_of_business: 'typeOfBusiness', years_relationship: 'yearsRelationship', notes: 'notes' },
+  },
+  {
+    table: 'kyc_regulatory_compliance',
+    jsonKey: 'regulatoryCompliance',
+    columns: { area: 'area', status: 'status', docs_provided: 'docsProvided', remarks: 'remarks', reputation_score: 'reputationScore' },
+  },
+  {
+    table: 'kyc_social_media_reviews',
+    jsonKey: 'socialMediaReviews',
+    columns: { platform: 'platform', entity: 'entity', review_summary: 'reviewSummary', rating: 'rating', verified_source: 'verifiedSource', action_required: 'actionRequired' },
+  },
+];
+
+// Helper: set nested value by dot-path
+function setNested(obj, path, field, value) {
+  if (!path) { obj[field] = value; return; }
+  const parts = path.split('.');
+  let cur = obj;
+  for (const part of parts) {
+    if (!cur[part]) cur[part] = {};
+    cur = cur[part];
+  }
+  cur[field] = value;
+}
+
+// Helper: get nested value by dot-path
+function getNested(obj, path, field) {
+  if (!path) return obj[field];
+  const parts = path.split('.');
+  let cur = obj;
+  for (const part of parts) {
+    if (!cur || !cur[part]) return undefined;
+    cur = cur[part];
+  }
+  return cur[field];
+}
 
 export async function getKycFormData(kycId) {
   const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from('kyc')
-    .select('form_data')
-    .eq('id', kycId)
+
+  // 1. Fetch scalar row
+  const { data: formRow, error: formError } = await supabase
+    .from('kyc_form')
+    .select('*')
+    .eq('kyc_id', kycId)
     .single();
-  if (error && error.code !== 'PGRST116') throw error;
-  return data?.form_data || null;
+
+  if (formError && formError.code !== 'PGRST116') throw formError;
+  if (!formRow) return null;
+
+  // 2. Build JSON from scalar columns
+  const result = {};
+  for (const [col, mapping] of Object.entries(SCALAR_MAP)) {
+    const value = formRow[col];
+    if (value !== null && value !== undefined) {
+      setNested(result, mapping.section, mapping.field, value);
+    }
+  }
+
+  // 3. Fetch all array tables in parallel
+  await Promise.all(ARRAY_TABLES.map(async ({ table, jsonKey, columns }) => {
+    const { data: rows, error } = await supabase
+      .from(table)
+      .select('*')
+      .eq('kyc_id', kycId)
+      .order('sort_order', { ascending: true });
+    if (error) throw error;
+
+    result[jsonKey] = (rows || []).map(row => {
+      const item = {};
+      for (const [dbCol, jsonField] of Object.entries(columns)) {
+        item[jsonField] = row[dbCol] != null ? row[dbCol] : '';
+      }
+      return item;
+    });
+  }));
+
+  return result;
 }
 
 export async function saveKycFormData(kycId, formData) {
   const supabase = getSupabase();
-  const { error } = await supabase
+
+  // 1. Build scalar row from JSON
+  const scalarRow = { kyc_id: kycId };
+  for (const [col, mapping] of Object.entries(SCALAR_MAP)) {
+    const value = getNested(formData, mapping.section, mapping.field);
+    scalarRow[col] = value !== undefined ? value : (mapping.type === 'boolean' ? false : '');
+  }
+
+  // 2. Upsert scalar row
+  const { error: upsertError } = await supabase
+    .from('kyc_form')
+    .upsert(scalarRow, { onConflict: 'kyc_id' });
+  if (upsertError) throw upsertError;
+
+  // 3. Save arrays: delete-then-insert for each
+  await Promise.all(ARRAY_TABLES.map(async ({ table, jsonKey, columns }) => {
+    const items = formData[jsonKey] || [];
+
+    // Delete existing rows
+    const { error: delError } = await supabase.from(table).delete().eq('kyc_id', kycId);
+    if (delError) throw delError;
+
+    // Insert new rows
+    if (items.length > 0) {
+      const rows = items.map((item, index) => {
+        const row = { kyc_id: kycId, sort_order: index };
+        for (const [dbCol, jsonField] of Object.entries(columns)) {
+          row[dbCol] = item[jsonField] !== undefined ? item[jsonField] : '';
+        }
+        return row;
+      });
+      const { error: insError } = await supabase.from(table).insert(rows);
+      if (insError) throw insError;
+    }
+  }));
+
+  // 4. Update kyc timestamp
+  const { error: tsError } = await supabase
     .from('kyc')
-    .update({
-      form_data: formData,
-      updated_at: new Date().toISOString(),
-    })
+    .update({ updated_at: new Date().toISOString() })
     .eq('id', kycId);
-  if (error) throw error;
+  if (tsError) throw tsError;
 }
 
 // ==================== KYC_DOCS ====================
