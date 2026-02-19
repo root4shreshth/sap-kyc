@@ -4,6 +4,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { AuthProvider } from '@/components/AuthProvider';
 import ProtectedLayout from '@/components/ProtectedLayout';
 import { kycApi } from '@/lib/api-client';
+import FormDataView from './FormDataView';
 
 function statusBadge(status) {
   const map = {
@@ -17,16 +18,18 @@ function KycReviewContent({ id }) {
   const router = useRouter();
   const [kycData, setKycData] = useState(null);
   const [docs, setDocs] = useState([]);
+  const [formData, setFormData] = useState(null);
   const [status, setStatus] = useState('');
   const [remarks, setRemarks] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [updateMsg, setUpdateMsg] = useState('');
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    Promise.all([kycApi.list(), kycApi.getDocs(id)])
-      .then(([list, docList]) => {
+    Promise.all([kycApi.list(), kycApi.getDocs(id), kycApi.getFormData(id)])
+      .then(([list, docList, { formData: fd }]) => {
         const found = list.find((r) => r.id === id);
         if (!found) setError('KYC request not found');
         else {
@@ -34,6 +37,7 @@ function KycReviewContent({ id }) {
           setRemarks(found.remarks || '');
         }
         setDocs(docList);
+        if (fd && Object.keys(fd).length > 0) setFormData(fd);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -53,6 +57,17 @@ function KycReviewContent({ id }) {
       setError(err.message);
     } finally {
       setUpdating(false);
+    }
+  }
+
+  async function handleExportPdf() {
+    setExporting(true);
+    try {
+      await kycApi.exportPdf(id);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -115,6 +130,20 @@ function KycReviewContent({ id }) {
                 </div>
               )}
             </div>
+
+            {/* Form Data */}
+            {formData && (
+              <div className="card" style={{ marginBottom: 24 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <h3 style={{ fontSize: 16 }}>KYC/KYS Application Data</h3>
+                  <button className="btn btn-primary" style={{ padding: '6px 16px', fontSize: 13 }}
+                    onClick={handleExportPdf} disabled={exporting}>
+                    {exporting ? 'Exporting...' : 'Export PDF'}
+                  </button>
+                </div>
+                <FormDataView data={formData} />
+              </div>
+            )}
 
             {/* Documents */}
             <div className="card" style={{ marginBottom: 24 }}>

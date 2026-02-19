@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS kyc (
   remarks      TEXT DEFAULT '',
   created_by   TEXT NOT NULL,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  form_data    JSONB DEFAULT '{}'
 );
 
 CREATE TABLE IF NOT EXISTS kyc_docs (

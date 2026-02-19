@@ -61,8 +61,38 @@ export const kycApi = {
     URL.revokeObjectURL(url);
   },
 
+  getFormData: (id) =>
+    fetch(`/api/kyc/${id}/form`, { headers: getHeaders() }).then(handleResponse),
+
+  exportPdf: async (id) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const res = await fetch(`/api/kyc/${id}/export-pdf`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error('PDF export failed');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `KYC-Export-${id.slice(0, 8)}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+
   portalValidate: (token) =>
     fetch(`/api/kyc/portal/${token}`).then(handleResponse),
+
+  portalGetForm: (token) =>
+    fetch(`/api/kyc/portal/${token}/form`).then(handleResponse),
+
+  portalSaveForm: (token, formData) =>
+    fetch(`/api/kyc/portal/${token}/form`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ formData }),
+    }).then(handleResponse),
 
   portalUpload: (token, formData) =>
     fetch(`/api/kyc/portal/${token}/upload`, {

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getKycByTokenHash, createKycDoc, updateKycStatus, createAuditEntry } from '@/lib/db';
+import { getKycByTokenHash, createKycDoc, updateKycStatus, createAuditEntry, saveKycFormData } from '@/lib/db';
 import { uploadFile } from '@/lib/storage';
 import { hashToken } from '@/lib/token';
 import { isValidFileType, MAX_FILE_SIZE } from '@/lib/auth';
@@ -20,13 +20,27 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'Documents already submitted' }, { status: 400 });
     }
 
-    const formData = await request.formData();
-    const files = formData.getAll('documents');
-    const docTypesRaw = formData.get('docTypes');
+    const multipart = await request.formData();
+    const files = multipart.getAll('documents');
+    const docTypesRaw = multipart.get('docTypes');
     const docTypes = docTypesRaw ? JSON.parse(docTypesRaw) : files.map(() => 'Other');
 
+    // Save form data if included
+    const kycFormDataRaw = multipart.get('formData');
+    if (kycFormDataRaw) {
+      const parsedFormData = JSON.parse(kycFormDataRaw);
+      parsedFormData.lastSaved = new Date().toISOString();
+      await saveKycFormData(kyc.id, parsedFormData);
+    }
+
+    // Files are optional now (form data can be submitted without documents)
     if (!files || files.length === 0) {
-      return NextResponse.json({ error: 'No files uploaded' }, { status: 400 });
+      await updateKycStatus(kyc.id, { status: 'Submitted', remarks: '' });
+      await createAuditEntry({
+        action: 'KYC_FORM_SUBMITTED', actor: 'client', kycId: kyc.id,
+        details: 'Form submitted without documents',
+      });
+      return NextResponse.json({ message: 'Form submitted successfully', files: [] });
     }
 
     const uploaded = [];

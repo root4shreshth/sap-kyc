@@ -89,3 +89,91 @@ input, select, textarea { font-family: inherit; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 table th { padding: 12px 16px; text-align: left; border-bottom: 2px solid var(--gray-200); }
 table td { padding: 10px 16px; border-bottom: 1px solid var(--gray-100); }
+
+/* Form tabs */
+.form-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--gray-200);
+  margin-bottom: 24px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.form-tab {
+  padding: 10px 14px;
+  border: none;
+  background: none;
+  border-bottom: 2px solid transparent;
+  color: var(--gray-500);
+  font-weight: 400;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  margin-bottom: -2px;
+  transition: all 0.15s ease;
+}
+.form-tab:hover { color: var(--gray-700); }
+.form-tab-active {
+  border-bottom-color: var(--blue);
+  color: var(--blue);
+  font-weight: 600;
+}
+
+/* Form section headers */
+.form-section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--navy);
+  margin-bottom: 16px;
+  margin-top: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+/* Checkbox group */
+.checkbox-group { display: flex; flex-wrap: wrap; gap: 16px; }
+.checkbox-item { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.checkbox-item input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--blue); }
+
+/* Form grids */
+.form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+/* Dynamic table rows */
+.dynamic-row {
+  padding: 16px;
+  background: var(--gray-50);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  position: relative;
+}
+.dynamic-row-remove {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--red);
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+/* Collapsible sections (review page) */
+.collapsible-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  padding: 12px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--navy);
+  border-bottom: 1px solid var(--gray-200);
+}
+.collapsible-header:hover { color: var(--blue); }
+
+/* Responsive */
+@media (max-width: 640px) {
+  .form-grid-2, .form-grid-3 { grid-template-columns: 1fr; }
+}

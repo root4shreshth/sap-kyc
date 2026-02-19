@@ -141,6 +141,31 @@ export async function getKycStats() {
   return stats;
 }
 
+// ==================== KYC FORM DATA ====================
+
+export async function getKycFormData(kycId) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('kyc')
+    .select('form_data')
+    .eq('id', kycId)
+    .single();
+  if (error && error.code !== 'PGRST116') throw error;
+  return data?.form_data || null;
+}
+
+export async function saveKycFormData(kycId, formData) {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from('kyc')
+    .update({
+      form_data: formData,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', kycId);
+  if (error) throw error;
+}
+
 // ==================== KYC_DOCS ====================
 
 export async function createKycDoc({ kycId, docType, storagePath, fileName, mimeType, fileSize }) {
