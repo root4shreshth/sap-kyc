@@ -145,13 +145,35 @@ function KycPortalContent({ token }) {
     );
   }
 
-  function toggleDemoData() {
+  async function toggleDemoData() {
     if (!demoMode) {
-      setFormData(getMockFormData());
+      const mock = getMockFormData();
+      setFormData(mock);
       setDemoMode(true);
+      // Auto-save to Supabase
+      setSaving(true);
+      try {
+        await kycApi.portalSaveForm(token, mock);
+        setLastSaved(new Date().toISOString());
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setSaving(false);
+      }
     } else {
-      setFormData(getDefaultFormData());
+      const blank = getDefaultFormData();
+      setFormData(blank);
       setDemoMode(false);
+      // Auto-save blank to Supabase
+      setSaving(true);
+      try {
+        await kycApi.portalSaveForm(token, blank);
+        setLastSaved(new Date().toISOString());
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setSaving(false);
+      }
     }
   }
 
@@ -198,7 +220,7 @@ function KycPortalContent({ token }) {
               transition: 'all 0.2s ease',
             }}
           >
-            {demoMode ? 'Clear Demo Data' : 'Fill Demo Data'}
+            {saving ? 'Saving...' : demoMode ? 'Clear Demo Data' : 'Fill Demo Data'}
           </button>
         </div>
 
