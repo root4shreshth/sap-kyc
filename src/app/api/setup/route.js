@@ -92,6 +92,22 @@ export async function POST() {
       results.storage = `Bucket error: ${e.message}`;
     }
 
+    // Ensure form_data column exists on kyc table (for existing installs)
+    try {
+      const { error: alterError } = await supabase.rpc('exec_sql', {
+        query: "ALTER TABLE kyc ADD COLUMN IF NOT EXISTS form_data JSONB DEFAULT '{}';"
+      });
+      if (alterError) {
+        // RPC not available — try a direct test read
+        const { error: colTest } = await supabase.from('kyc').select('form_data').limit(0);
+        results.form_data_column = colTest ? 'missing — run: ALTER TABLE kyc ADD COLUMN IF NOT EXISTS form_data JSONB DEFAULT \'{}\';' : 'ready';
+      } else {
+        results.form_data_column = 'ready';
+      }
+    } catch (e) {
+      results.form_data_column = `check failed: ${e.message}`;
+    }
+
     // Verify all tables
     const tables = ['users', 'kyc', 'kyc_docs', 'audit_log'];
     for (const table of tables) {
