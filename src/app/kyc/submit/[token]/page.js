@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { kycApi } from '@/lib/api-client';
-import { TABS, getDefaultFormData } from './formSchema';
+import { TABS, getDefaultFormData, getMockFormData } from './formSchema';
 import {
   BusinessInfoSection, ProprietorsSection, CompanyDetailsSection,
   OwnershipSection, BankingSection, ReferencesSection,
@@ -19,6 +19,7 @@ function KycPortalContent({ token }) {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
+  const [demoMode, setDemoMode] = useState(false);
 
   useEffect(() => {
     kycApi.portalValidate(token)
@@ -144,6 +145,16 @@ function KycPortalContent({ token }) {
     );
   }
 
+  function toggleDemoData() {
+    if (!demoMode) {
+      setFormData(getMockFormData());
+      setDemoMode(true);
+    } else {
+      setFormData(getDefaultFormData());
+      setDemoMode(false);
+    }
+  }
+
   const sectionProps = { data: formData, update, updateArray, addRow, removeRow };
 
   function renderSection() {
@@ -164,10 +175,31 @@ function KycPortalContent({ token }) {
     <div style={{ minHeight: '100vh', background: 'var(--gray-100)', padding: '32px 16px' }}>
       <div style={{ maxWidth: 800, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <img src="/logo.png" alt="Al-Amir" style={{ height: 60, marginBottom: 8 }} />
           <h1 style={{ fontSize: 22, color: 'var(--navy)' }}>KYC / KYS Application Form</h1>
           <p style={{ color: 'var(--gray-500)', marginTop: 4, fontSize: 14 }}>
             Alamir International Trading L.L.C
           </p>
+        </div>
+
+        {/* Demo toggle - remove later */}
+        <div style={{ textAlign: 'right', marginBottom: 12 }}>
+          <button
+            onClick={toggleDemoData}
+            style={{
+              padding: '6px 14px',
+              fontSize: 12,
+              fontWeight: 600,
+              border: demoMode ? '2px solid var(--red)' : '2px solid var(--green)',
+              borderRadius: 20,
+              background: demoMode ? '#fee2e2' : '#dcfce7',
+              color: demoMode ? '#991b1b' : '#166534',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+            }}
+          >
+            {demoMode ? 'Clear Demo Data' : 'Fill Demo Data'}
+          </button>
         </div>
 
         <div className="card" style={{ marginBottom: 16, padding: '12px 20px' }}>

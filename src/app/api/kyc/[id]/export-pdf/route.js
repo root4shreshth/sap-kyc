@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getKycById, getKycFormData } from '@/lib/db';
 import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 
 const NAVY = [15, 23, 42];
 const BLUE = [37, 99, 235];
@@ -69,7 +69,7 @@ export async function GET(request, { params }) {
 
     function addTable(headers, rows) {
       if (y > 250) { doc.addPage(); y = 15; }
-      doc.autoTable({
+      autoTable(doc, {
         startY: y,
         head: [headers],
         body: rows,
@@ -193,23 +193,44 @@ export async function GET(request, { params }) {
     }
 
     const cl = formData.complianceChecklist || {};
-    const checks = [
-      ['Social media check', cl.negSocialMediaConductCheck],
+    const checkItems = [
+      ['Negative social media / reputation check', cl.negSocialMediaConductCheck],
       ['Banking credibility check', cl.bankingCredibilityCheck],
-      ['Regulatory approvals', cl.regulatoryApprovalCheck],
-      ['Background check', cl.additionalBackgroundCheck],
-      ['Labor/safety licenses', cl.laborSafetyLicenseCheck],
-      ['Licensing/permits', cl.licensingPermitCheck],
+      ['Regulatory approvals verified', cl.regulatoryApprovalCheck],
+      ['Additional background check', cl.additionalBackgroundCheck],
+      ['Labor / safety licenses checked', cl.laborSafetyLicenseCheck],
+      ['Licensing and permits verified', cl.licensingPermitCheck],
     ];
-    checks.forEach(([label, val]) => {
-      addRow(val ? '[X] ' + label : '[ ] ' + label, '');
+    if (y > 270) { doc.addPage(); y = 15; }
+    doc.setFontSize(10);
+    doc.setTextColor(...NAVY);
+    doc.text('Compliance Checklist:', 15, y);
+    y += 5;
+    checkItems.forEach(([label, val]) => {
+      if (y > 280) { doc.addPage(); y = 15; }
+      doc.setFontSize(9);
+      doc.setTextColor(...NAVY);
+      doc.text(val ? '[X]' : '[ ]', 17, y);
+      doc.setTextColor(...GRAY);
+      doc.text(label, 27, y);
+      y += 5;
     });
 
     // ===== SECTION 8: Declaration =====
     const decl = formData.declaration || {};
     sectionHeader('8. Declaration & Authorization');
-    addRow(decl.infoAccurate ? '[X]' : '[ ]', 'All information is true and accurate');
-    addRow(decl.authorizeVerification ? '[X]' : '[ ]', 'Authorize verification of references');
+    if (y > 280) { doc.addPage(); y = 15; }
+    doc.setFontSize(9);
+    doc.setTextColor(...NAVY);
+    doc.text(decl.infoAccurate ? '[X]' : '[ ]', 17, y);
+    doc.setTextColor(...GRAY);
+    doc.text('All information provided is true and accurate', 27, y);
+    y += 5;
+    doc.setTextColor(...NAVY);
+    doc.text(decl.authorizeVerification ? '[X]' : '[ ]', 17, y);
+    doc.setTextColor(...GRAY);
+    doc.text('Authorize verification of social media, bank references, and compliance', 27, y);
+    y += 7;
     addRow('Signed By', decl.signatureName);
     addRow('Position', decl.signaturePosition);
     addRow('Date', decl.signatureDate);

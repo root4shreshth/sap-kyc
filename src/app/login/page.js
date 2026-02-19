@@ -57,10 +57,13 @@ function LoginForm() {
       background: 'var(--gray-100)',
     }}>
       <div className="card" style={{ width: 400, maxWidth: '90%' }}>
-        <h2 style={{ marginBottom: 4, color: 'var(--navy)' }}>Internal Login</h2>
-        <p style={{ color: 'var(--gray-500)', fontSize: 14, marginBottom: 24 }}>
-          Alamir Operations Platform
-        </p>
+        <div style={{ textAlign: 'center', marginBottom: 20 }}>
+          <img src="/logo.png" alt="Al-Amir" style={{ height: 56, marginBottom: 8 }} />
+          <h2 style={{ marginBottom: 4, color: 'var(--navy)' }}>Internal Login</h2>
+          <p style={{ color: 'var(--gray-500)', fontSize: 14 }}>
+            Alamir Operations Platform
+          </p>
+        </div>
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label>Email</label>
