@@ -20,6 +20,11 @@ export const authApi = {
     }).then(handleResponse),
 };
 
+export const sheetsApi = {
+  syncAll: () =>
+    fetch('/api/sync-sheets', { method: 'POST', headers: getHeaders() }).then(handleResponse),
+};
+
 export const kycApi = {
   stats: () =>
     fetch('/api/kyc/stats', { headers: getHeaders() }).then(handleResponse),

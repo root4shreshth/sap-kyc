@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { AuthProvider } from '@/components/AuthProvider';
 import ProtectedLayout from '@/components/ProtectedLayout';
-import { kycApi } from '@/lib/api-client';
+import { kycApi, sheetsApi } from '@/lib/api-client';
 
 const STAT_CONFIG = [
   { key: 'Pending', label: 'Pending', color: '#f59e0b' },
@@ -15,15 +15,43 @@ const STAT_CONFIG = [
 function DashboardContent() {
   const [stats, setStats] = useState(null);
   const [error, setError] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState('');
 
   useEffect(() => {
     kycApi.stats().then(setStats).catch((e) => setError(e.message));
   }, []);
 
+  async function handleSyncSheets() {
+    setSyncing(true);
+    setSyncMsg('');
+    try {
+      const res = await sheetsApi.syncAll();
+      const s = res.synced;
+      setSyncMsg(`Synced: ${s.kyc} KYC records, ${s.forms} forms, ${s.compliance} compliance, ${s.docs} documents`);
+    } catch (e) {
+      setSyncMsg(`Sync failed: ${e.message}`);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   return (
     <ProtectedLayout roles={['Admin', 'KYC Team']}>
       <div className="container" style={{ paddingTop: 32 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 24 }}>KYC Dashboard</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 600, margin: 0 }}>KYC Dashboard</h1>
+          <button onClick={handleSyncSheets} disabled={syncing} style={{
+            padding: '8px 16px', fontSize: 13, fontWeight: 600,
+            border: '1px solid var(--gray-200)', borderRadius: 8, cursor: syncing ? 'not-allowed' : 'pointer',
+            background: syncing ? 'var(--gray-100)' : 'white', color: 'var(--navy)',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            <span style={{ fontSize: 16 }}>📊</span>
+            {syncing ? 'Syncing...' : 'Sync to Google Sheets'}
+          </button>
+        </div>
+        {syncMsg && <p style={{ fontSize: 13, color: syncMsg.includes('failed') ? 'var(--red)' : 'var(--green)', marginBottom: 12 }}>{syncMsg}</p>}
         {error && <p className="error-msg">{error}</p>}
         {stats ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>

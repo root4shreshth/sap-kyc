@@ -1,4 +1,5 @@
 import { getSupabase } from './supabase';
+import { syncKycToSheet, syncFormDataToSheet, syncComplianceToSheet, syncDocToSheet, syncAuditToSheet } from './google-sheets';
 
 // ==================== USERS ====================
 
@@ -44,6 +45,10 @@ export async function createKyc({ id, clientName, companyName, email, tokenHash,
     .select()
     .single();
   if (error) throw error;
+
+  // Sync to Google Sheets (fire-and-forget)
+  syncKycToSheet({ id, clientName, companyName, email, status: status || 'Pending', remarks: remarks || '', createdBy, createdAt: data.created_at, updatedAt: data.updated_at }).catch(() => {});
+
   return data;
 }
 
@@ -117,15 +122,21 @@ export async function getKycById(id) {
 
 export async function updateKycStatus(id, { status, remarks }) {
   const supabase = getSupabase();
+  const now = new Date().toISOString();
   const { error } = await supabase
     .from('kyc')
     .update({
       status,
       remarks: remarks !== undefined ? remarks : '',
-      updated_at: new Date().toISOString(),
+      updated_at: now,
     })
     .eq('id', id);
   if (error) throw error;
+
+  // Sync updated KYC to sheet (get full record first)
+  getKycById(id).then(kyc => {
+    if (kyc) syncKycToSheet(kyc).catch(() => {});
+  }).catch(() => {});
 }
 
 export async function getKycStats() {
@@ -372,6 +383,9 @@ export async function saveKycFormData(kycId, formData) {
     .update({ updated_at: new Date().toISOString() })
     .eq('id', kycId);
   if (tsError) throw tsError;
+
+  // Sync form data to Google Sheets (fire-and-forget)
+  syncFormDataToSheet(kycId, formData).catch(() => {});
 }
 
 // ==================== KYC COMPLIANCE RESULTS ====================
@@ -452,6 +466,11 @@ export async function saveComplianceResults(kycId, checks) {
       .insert(rows);
     if (insError) throw insError;
   }
+
+  // Sync compliance to sheet (fire-and-forget)
+  getComplianceResults(kycId).then(saved => {
+    syncComplianceToSheet(kycId, saved).catch(() => {});
+  }).catch(() => {});
 }
 
 export async function updateComplianceOverride(kycId, checkKey, { adminOverride, adminNotes, updatedBy }) {
@@ -467,6 +486,11 @@ export async function updateComplianceOverride(kycId, checkKey, { adminOverride,
     .eq('kyc_id', kycId)
     .eq('check_key', checkKey);
   if (error) throw error;
+
+  // Sync compliance to sheet (fire-and-forget)
+  getComplianceResults(kycId).then(saved => {
+    syncComplianceToSheet(kycId, saved).catch(() => {});
+  }).catch(() => {});
 }
 
 // ==================== KYC_DOCS ====================
@@ -486,6 +510,10 @@ export async function createKycDoc({ kycId, docType, storagePath, fileName, mime
     .select()
     .single();
   if (error) throw error;
+
+  // Sync doc to Google Sheets (fire-and-forget)
+  syncDocToSheet({ kycId, docType, storagePath, fileName, uploadedAt: data.uploaded_at }).catch(() => {});
+
   return data;
 }
 
@@ -519,4 +547,7 @@ export async function createAuditEntry({ action, actor, kycId, details }) {
       details: details || '',
     });
   if (error) throw error;
+
+  // Sync audit to Google Sheets (fire-and-forget)
+  syncAuditToSheet({ action, actor, kycId, details }).catch(() => {});
 }
