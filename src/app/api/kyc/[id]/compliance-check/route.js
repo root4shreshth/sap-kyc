@@ -95,10 +95,19 @@ export async function POST(request, { params }) {
 
     const prompt = buildGeminiPrompt(kyc, formData, docs);
 
-    // Call Gemini API
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
+    // Call Gemini API — try models in order of preference
+    const MODELS = [
+      'gemini-2.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+    ];
+
+    let geminiRes = null;
+    let usedModel = '';
+
+    for (const model of MODELS) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -108,14 +117,31 @@ export async function POST(request, { params }) {
             maxOutputTokens: 4096,
           },
         }),
-      }
-    );
+      });
 
-    if (!geminiRes.ok) {
-      const errText = await geminiRes.text();
-      console.error('Gemini API error:', errText);
-      return NextResponse.json({ error: `Gemini API error: ${geminiRes.status}` }, { status: 502 });
+      if (res.ok) {
+        geminiRes = res;
+        usedModel = model;
+        break;
+      }
+
+      // If 404 (model not found), try next model
+      if (res.status === 404) {
+        console.log(`Gemini model ${model} not found, trying next...`);
+        continue;
+      }
+
+      // Other errors — return immediately
+      const errText = await res.text();
+      console.error(`Gemini API error (${model}):`, errText);
+      return NextResponse.json({ error: `Gemini API error: ${res.status}` }, { status: 502 });
     }
+
+    if (!geminiRes) {
+      return NextResponse.json({ error: 'No Gemini model available. Check your API key and enabled models at https://aistudio.google.com' }, { status: 502 });
+    }
+
+    console.log(`Compliance check using model: ${usedModel}`);
 
     const geminiData = await geminiRes.json();
     const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
