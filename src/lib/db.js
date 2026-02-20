@@ -145,8 +145,8 @@ export async function getKycStats() {
 
 // Scalar mapping: DB column -> { section (dot-path or null), field, type }
 const SCALAR_MAP = {
-  last_saved:                 { section: null, field: 'lastSaved' },
-  version:                    { section: null, field: 'version' },
+  last_saved:                 { section: null, field: 'lastSaved', type: 'timestamp' },
+  version:                    { section: null, field: 'version', type: 'integer' },
 
   bi_business_name:           { section: 'businessInfo', field: 'businessName' },
   bi_tax_registration_no:     { section: 'businessInfo', field: 'taxRegistrationNo' },
@@ -321,11 +321,21 @@ export async function getKycFormData(kycId) {
 export async function saveKycFormData(kycId, formData) {
   const supabase = getSupabase();
 
-  // 1. Build scalar row from JSON
+  // 1. Build scalar row from JSON (with type coercion)
   const scalarRow = { kyc_id: kycId };
   for (const [col, mapping] of Object.entries(SCALAR_MAP)) {
-    const value = getNested(formData, mapping.section, mapping.field);
-    scalarRow[col] = value !== undefined ? value : (mapping.type === 'boolean' ? false : '');
+    let value = getNested(formData, mapping.section, mapping.field);
+    if (value === undefined || value === null || value === '') {
+      // Use proper defaults per type
+      if (mapping.type === 'boolean') { value = false; }
+      else if (mapping.type === 'integer') { value = null; }
+      else if (mapping.type === 'timestamp') { value = null; }
+      else { value = ''; }
+    } else if (mapping.type === 'integer') {
+      const parsed = parseInt(value, 10);
+      value = isNaN(parsed) ? null : parsed;
+    }
+    scalarRow[col] = value;
   }
 
   // 2. Upsert scalar row
