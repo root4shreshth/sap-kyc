@@ -15,14 +15,23 @@ const SHEET_DOCUMENTS = 'Documents';
 const SHEET_AUDIT = 'Audit Log';
 
 function getCredentials() {
+  // Try single JSON env var first
   const raw = process.env.GOOGLE_SHEETS_CREDENTIALS;
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    console.error('Failed to parse GOOGLE_SHEETS_CREDENTIALS');
-    return null;
+  if (raw) {
+    try { return JSON.parse(raw); } catch { /* fall through to individual vars */ }
   }
+
+  // Fall back to individual env vars
+  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  const privateKey = process.env.GOOGLE_PRIVATE_KEY;
+  if (!clientEmail || !privateKey) return null;
+
+  return {
+    client_email: clientEmail,
+    // Netlify stores \n as literal — convert to real newlines
+    private_key: privateKey.replace(/\\n/g, '\n'),
+    token_uri: process.env.GOOGLE_TOKEN_URI || 'https://oauth2.googleapis.com/token',
+  };
 }
 
 function getSheetId() {
