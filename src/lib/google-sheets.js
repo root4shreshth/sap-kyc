@@ -14,11 +14,35 @@ const SHEET_COMPLIANCE = 'Compliance Results';
 const SHEET_DOCUMENTS = 'Documents';
 const SHEET_AUDIT = 'Audit Log';
 
+function fixPrivateKey(key) {
+  if (!key) return null;
+  // Remove surrounding quotes if present
+  let k = key.replace(/^["']|["']$/g, '');
+  // Replace literal \n with real newlines
+  k = k.replace(/\\n/g, '\n');
+  // If key got completely flattened (no real newlines), reconstruct it
+  if (!k.includes('\n')) {
+    // Extract the base64 content between header and footer
+    const match = k.match(/-----BEGIN PRIVATE KEY-----(.*?)-----END PRIVATE KEY-----/);
+    if (match) {
+      const b64 = match[1].trim();
+      // Split into 64-char lines
+      const lines = b64.match(/.{1,64}/g) || [];
+      k = `-----BEGIN PRIVATE KEY-----\n${lines.join('\n')}\n-----END PRIVATE KEY-----\n`;
+    }
+  }
+  return k;
+}
+
 function getCredentials() {
   // Try single JSON env var first
   const raw = process.env.GOOGLE_SHEETS_CREDENTIALS;
   if (raw) {
-    try { return JSON.parse(raw); } catch { /* fall through to individual vars */ }
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.private_key) parsed.private_key = fixPrivateKey(parsed.private_key);
+      return parsed;
+    } catch { /* fall through to individual vars */ }
   }
 
   // Fall back to individual env vars
@@ -28,8 +52,7 @@ function getCredentials() {
 
   return {
     client_email: clientEmail,
-    // Netlify stores \n as literal — convert to real newlines
-    private_key: privateKey.replace(/\\n/g, '\n'),
+    private_key: fixPrivateKey(privateKey),
     token_uri: process.env.GOOGLE_TOKEN_URI || 'https://oauth2.googleapis.com/token',
   };
 }
@@ -72,9 +95,19 @@ async function getAccessToken() {
   if (cachedToken && Date.now() < tokenExpiry) return cachedToken;
 
   const credentials = getCredentials();
-  if (!credentials) return null;
+  if (!credentials) {
+    console.error('Google Sheets: No credentials found');
+    return null;
+  }
 
-  const jwt = await createJwt(credentials);
+  let jwt;
+  try {
+    jwt = await createJwt(credentials);
+  } catch (jwtErr) {
+    console.error('Google Sheets JWT creation failed:', jwtErr.message);
+    console.error('Private key starts with:', credentials.private_key?.substring(0, 40));
+    return null;
+  }
 
   const res = await fetch(credentials.token_uri, {
     method: 'POST',
