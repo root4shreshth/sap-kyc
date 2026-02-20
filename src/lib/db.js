@@ -402,20 +402,55 @@ export async function getComplianceResults(kycId) {
 
 export async function saveComplianceResults(kycId, checks) {
   const supabase = getSupabase();
-  // Upsert each check by kyc_id + check_key
-  for (const check of checks) {
-    const { error } = await supabase
+
+  // Delete existing AI results (but preserve admin overrides by re-merging)
+  const { data: existing } = await supabase
+    .from('kyc_compliance_results')
+    .select('check_key, admin_override, admin_notes, updated_by')
+    .eq('kyc_id', kycId);
+
+  const overrideMap = {};
+  (existing || []).forEach(row => {
+    if (row.admin_override) {
+      overrideMap[row.check_key] = {
+        admin_override: row.admin_override,
+        admin_notes: row.admin_notes,
+        updated_by: row.updated_by,
+      };
+    }
+  });
+
+  // Delete all existing results for this KYC
+  const { error: delError } = await supabase
+    .from('kyc_compliance_results')
+    .delete()
+    .eq('kyc_id', kycId);
+  if (delError) throw delError;
+
+  // Insert fresh results, preserving any admin overrides
+  const now = new Date().toISOString();
+  const rows = checks.map(check => {
+    const prev = overrideMap[check.checkKey];
+    return {
+      kyc_id: kycId,
+      check_key: check.checkKey,
+      label: check.label,
+      category: check.category || 'General',
+      ai_status: check.aiStatus || 'pending',
+      ai_remarks: check.aiRemarks || '',
+      admin_override: prev?.admin_override || null,
+      admin_notes: prev?.admin_notes || '',
+      updated_by: prev?.updated_by || '',
+      created_at: now,
+      updated_at: now,
+    };
+  });
+
+  if (rows.length > 0) {
+    const { error: insError } = await supabase
       .from('kyc_compliance_results')
-      .upsert({
-        kyc_id: kycId,
-        check_key: check.checkKey,
-        label: check.label,
-        category: check.category || 'General',
-        ai_status: check.aiStatus || 'pending',
-        ai_remarks: check.aiRemarks || '',
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'kyc_id,check_key' });
-    if (error) throw error;
+      .insert(rows);
+    if (insError) throw insError;
   }
 }
 

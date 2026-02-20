@@ -114,7 +114,8 @@ export async function POST(request, { params }) {
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             temperature: 0.2,
-            maxOutputTokens: 4096,
+            maxOutputTokens: 8192,
+            responseMimeType: 'application/json',
           },
         }),
       });
@@ -143,17 +144,50 @@ export async function POST(request, { params }) {
 
     console.log(`Compliance check using model: ${usedModel}`);
 
-    const geminiData = await geminiRes.json();
-    const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    let geminiData;
+    try {
+      geminiData = await geminiRes.json();
+    } catch (jsonErr) {
+      console.error('Failed to read Gemini response body:', jsonErr);
+      return NextResponse.json({ error: 'Failed to read AI response body' }, { status: 502 });
+    }
+
+    // Check for blocked/empty responses
+    if (!geminiData?.candidates || geminiData.candidates.length === 0) {
+      const blockReason = geminiData?.promptFeedback?.blockReason || 'unknown';
+      console.error('Gemini returned no candidates. Block reason:', blockReason, JSON.stringify(geminiData));
+      return NextResponse.json({ error: `AI returned no response (reason: ${blockReason})` }, { status: 502 });
+    }
+
+    const candidate = geminiData.candidates[0];
+    if (candidate.finishReason && candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
+      console.error('Gemini finish reason:', candidate.finishReason);
+      return NextResponse.json({ error: `AI response issue: ${candidate.finishReason}` }, { status: 502 });
+    }
+
+    const rawText = candidate?.content?.parts?.[0]?.text || '';
+    if (!rawText) {
+      console.error('Empty text in Gemini response:', JSON.stringify(geminiData));
+      return NextResponse.json({ error: 'AI returned empty text' }, { status: 502 });
+    }
 
     // Parse JSON from response (strip markdown code blocks if present)
     let aiResults;
     try {
-      const jsonStr = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      // Clean up: remove markdown fences, trim whitespace
+      let jsonStr = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      // Try to extract JSON array if wrapped in other text
+      const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
+      if (arrayMatch) {
+        jsonStr = arrayMatch[0];
+      }
       aiResults = JSON.parse(jsonStr);
+      if (!Array.isArray(aiResults)) {
+        throw new Error('Expected JSON array');
+      }
     } catch (parseErr) {
-      console.error('Failed to parse Gemini response:', rawText);
-      return NextResponse.json({ error: 'Failed to parse AI response', raw: rawText }, { status: 502 });
+      console.error('Failed to parse Gemini response:', rawText.substring(0, 500));
+      return NextResponse.json({ error: 'Failed to parse AI response as JSON array' }, { status: 502 });
     }
 
     // Merge AI results with check definitions and save
@@ -172,9 +206,9 @@ export async function POST(request, { params }) {
 
     // Return saved results
     const saved = await getComplianceResults(id);
-    return NextResponse.json({ message: 'Compliance check complete', results: saved });
+    return NextResponse.json({ message: 'Compliance check complete', results: saved, model: usedModel });
   } catch (err) {
-    console.error('Compliance check error:', err);
+    console.error('Compliance check error:', err.message, err.stack);
     return NextResponse.json({ error: `Compliance check failed: ${err.message}` }, { status: 500 });
   }
 }
