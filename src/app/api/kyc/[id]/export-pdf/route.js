@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getKycById, getKycFormData } from '@/lib/db';
+import { getKycById, getKycFormData, getComplianceResults } from '@/lib/db';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -182,39 +182,27 @@ export async function GET(request, { params }) {
       );
     }
 
-    // ===== SECTION 7: Compliance =====
-    const rc = formData.regulatoryCompliance || [];
-    if (rc.some(r => r.status)) {
-      sectionHeader('7. Regulatory & Compliance');
+    // ===== SECTION 7: AI Compliance Check =====
+    let complianceResults = [];
+    try {
+      complianceResults = await getComplianceResults(id);
+    } catch { /* no results yet */ }
+
+    if (complianceResults.length > 0) {
+      sectionHeader('7. Compliance Check (AI-Assisted)');
+      const statusMap = { pass: 'PASS', fail: 'FAIL', warning: 'WARN', not_applicable: 'N/A', pending: '...' };
       addTable(
-        ['Compliance Area', 'Status', 'Docs', 'Remarks', 'Score'],
-        rc.filter(r => r.status).map(r => [r.area, r.status, r.docsProvided, r.remarks, r.reputationScore])
+        ['Check', 'Category', 'AI Status', 'AI Remarks', 'Override', 'Admin Notes'],
+        complianceResults.map(r => [
+          r.label,
+          r.category,
+          statusMap[r.adminOverride || r.aiStatus] || r.aiStatus,
+          r.aiRemarks || '',
+          r.adminOverride ? statusMap[r.adminOverride] : '',
+          r.adminNotes || '',
+        ])
       );
     }
-
-    const cl = formData.complianceChecklist || {};
-    const checkItems = [
-      ['Negative social media / reputation check', cl.negSocialMediaConductCheck],
-      ['Banking credibility check', cl.bankingCredibilityCheck],
-      ['Regulatory approvals verified', cl.regulatoryApprovalCheck],
-      ['Additional background check', cl.additionalBackgroundCheck],
-      ['Labor / safety licenses checked', cl.laborSafetyLicenseCheck],
-      ['Licensing and permits verified', cl.licensingPermitCheck],
-    ];
-    if (y > 270) { doc.addPage(); y = 15; }
-    doc.setFontSize(10);
-    doc.setTextColor(...NAVY);
-    doc.text('Compliance Checklist:', 15, y);
-    y += 5;
-    checkItems.forEach(([label, val]) => {
-      if (y > 280) { doc.addPage(); y = 15; }
-      doc.setFontSize(9);
-      doc.setTextColor(...NAVY);
-      doc.text(val ? '[X]' : '[ ]', 17, y);
-      doc.setTextColor(...GRAY);
-      doc.text(label, 27, y);
-      y += 5;
-    });
 
     // ===== SECTION 8: Declaration =====
     const decl = formData.declaration || {};

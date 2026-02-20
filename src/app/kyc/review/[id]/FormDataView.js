@@ -62,9 +62,6 @@ export default function FormDataView({ data }) {
   const bc = data.bankingChecks || [];
   const sr = data.supplierReferences || [];
   const tr = data.tradeReferences || [];
-  const rc = data.regulatoryCompliance || [];
-  const smr = data.socialMediaReviews || [];
-  const cl = data.complianceChecklist || {};
   const decl = data.declaration || {};
 
   return (
@@ -186,40 +183,7 @@ export default function FormDataView({ data }) {
         )}
       </Section>
 
-      <Section title="7. Compliance & Reviews">
-        <ArrayTable
-          headers={['Compliance Area', 'Status', 'Docs Provided', 'Remarks', 'Score']}
-          rows={rc}
-          renderRow={(r) => <>
-            <td>{r.area}</td><td>{r.status}</td><td>{r.docsProvided}</td>
-            <td>{r.remarks}</td><td>{r.reputationScore}</td>
-          </>}
-        />
-        {smr.length > 0 && (
-          <>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginTop: 12, marginBottom: 8 }}>Social Media Reviews</div>
-            <ArrayTable
-              headers={['Platform', 'Entity', 'Summary', 'Rating', 'Source', 'Action']}
-              rows={smr}
-              renderRow={(r) => <>
-                <td>{r.platform}</td><td>{r.entity}</td><td>{r.reviewSummary}</td>
-                <td>{r.rating}</td><td>{r.verifiedSource}</td><td>{r.actionRequired}</td>
-              </>}
-            />
-          </>
-        )}
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginBottom: 8 }}>Compliance Checklist</div>
-          <BoolRow label="Negative social media / reputation check" value={cl.negSocialMediaConductCheck} />
-          <BoolRow label="Banking credibility concerns checked" value={cl.bankingCredibilityCheck} />
-          <BoolRow label="Regulatory approvals verified" value={cl.regulatoryApprovalCheck} />
-          <BoolRow label="Additional background check" value={cl.additionalBackgroundCheck} />
-          <BoolRow label="Labor, safety & operational licenses" value={cl.laborSafetyLicenseCheck} />
-          <BoolRow label="Licensing and permits verified" value={cl.licensingPermitCheck} />
-        </div>
-      </Section>
-
-      <Section title="8. Declaration & Authorization">
+      <Section title="7. Declaration & Authorization">
         <BoolRow label="All information provided is true and accurate" value={decl.infoAccurate} />
         <BoolRow label="Authorize verification of social media, bank references, and compliance" value={decl.authorizeVerification} />
         <Row label="Signature (Name)" value={decl.signatureName} />

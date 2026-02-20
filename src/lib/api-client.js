@@ -81,6 +81,22 @@ export const kycApi = {
     URL.revokeObjectURL(url);
   },
 
+  getComplianceResults: (id) =>
+    fetch(`/api/kyc/${id}/compliance-check`, { headers: getHeaders() }).then(handleResponse),
+
+  runComplianceCheck: (id) =>
+    fetch(`/api/kyc/${id}/compliance-check`, {
+      method: 'POST',
+      headers: getHeaders(),
+    }).then(handleResponse),
+
+  overrideCompliance: (id, checkKey, adminOverride, adminNotes) =>
+    fetch(`/api/kyc/${id}/compliance-override`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify({ checkKey, adminOverride, adminNotes }),
+    }).then(handleResponse),
+
   portalValidate: (token) =>
     fetch(`/api/kyc/portal/${token}`).then(handleResponse),
 

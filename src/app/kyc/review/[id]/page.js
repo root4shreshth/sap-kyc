@@ -5,6 +5,7 @@ import { AuthProvider } from '@/components/AuthProvider';
 import ProtectedLayout from '@/components/ProtectedLayout';
 import { kycApi } from '@/lib/api-client';
 import FormDataView from './FormDataView';
+import ComplianceCheckPanel from './ComplianceCheckPanel';
 
 function statusBadge(status) {
   const map = {
@@ -173,6 +174,13 @@ function KycReviewContent({ id }) {
                 </div>
               )}
             </div>
+
+            {/* AI Compliance Check */}
+            {formData && (
+              <div className="card" style={{ marginBottom: 24 }}>
+                <ComplianceCheckPanel kycId={id} />
+              </div>
+            )}
 
             {/* Status Update */}
             {!['Approved', 'Rejected'].includes(kycData.status) && (

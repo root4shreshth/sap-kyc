@@ -364,6 +364,66 @@ export async function saveKycFormData(kycId, formData) {
   if (tsError) throw tsError;
 }
 
+// ==================== KYC COMPLIANCE RESULTS ====================
+
+export async function getComplianceResults(kycId) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('kyc_compliance_results')
+    .select('*')
+    .eq('kyc_id', kycId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(row => ({
+    id: row.id,
+    kycId: row.kyc_id,
+    checkKey: row.check_key,
+    label: row.label,
+    category: row.category,
+    aiStatus: row.ai_status,
+    aiRemarks: row.ai_remarks,
+    adminOverride: row.admin_override,
+    adminNotes: row.admin_notes,
+    updatedBy: row.updated_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export async function saveComplianceResults(kycId, checks) {
+  const supabase = getSupabase();
+  // Upsert each check by kyc_id + check_key
+  for (const check of checks) {
+    const { error } = await supabase
+      .from('kyc_compliance_results')
+      .upsert({
+        kyc_id: kycId,
+        check_key: check.checkKey,
+        label: check.label,
+        category: check.category || 'General',
+        ai_status: check.aiStatus || 'pending',
+        ai_remarks: check.aiRemarks || '',
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'kyc_id,check_key' });
+    if (error) throw error;
+  }
+}
+
+export async function updateComplianceOverride(kycId, checkKey, { adminOverride, adminNotes, updatedBy }) {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from('kyc_compliance_results')
+    .update({
+      admin_override: adminOverride,
+      admin_notes: adminNotes || '',
+      updated_by: updatedBy || '',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('kyc_id', kycId)
+    .eq('check_key', checkKey);
+  if (error) throw error;
+}
+
 // ==================== KYC_DOCS ====================
 
 export async function createKycDoc({ kycId, docType, storagePath, fileName, mimeType, fileSize }) {

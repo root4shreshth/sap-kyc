@@ -210,13 +210,31 @@ CREATE TABLE IF NOT EXISTS kyc_social_media_reviews (
   verified_source TEXT DEFAULT '',
   action_required TEXT DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS kyc_compliance_results (
+  id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  kyc_id          UUID NOT NULL REFERENCES kyc(id) ON DELETE CASCADE,
+  check_key       TEXT NOT NULL,
+  label           TEXT NOT NULL,
+  category        TEXT NOT NULL DEFAULT 'General',
+  ai_status       TEXT NOT NULL DEFAULT 'pending'
+                  CHECK (ai_status IN ('pass', 'fail', 'warning', 'pending', 'not_applicable')),
+  ai_remarks      TEXT DEFAULT '',
+  admin_override  TEXT DEFAULT NULL
+                  CHECK (admin_override IS NULL OR admin_override IN ('pass', 'fail', 'warning', 'not_applicable')),
+  admin_notes     TEXT DEFAULT '',
+  updated_by      TEXT DEFAULT '',
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(kyc_id, check_key)
+);
 `;
 
 const ALL_TABLES = [
   'users', 'kyc', 'kyc_docs', 'audit_log',
   'kyc_form', 'kyc_proprietors', 'kyc_ownership_management',
   'kyc_banking_checks', 'kyc_supplier_references', 'kyc_trade_references',
-  'kyc_regulatory_compliance', 'kyc_social_media_reviews',
+  'kyc_regulatory_compliance', 'kyc_social_media_reviews', 'kyc_compliance_results',
 ];
 
 export async function POST() {

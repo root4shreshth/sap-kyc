@@ -6,7 +6,7 @@ import { TABS, getDefaultFormData, getMockFormData } from './formSchema';
 import {
   BusinessInfoSection, ProprietorsSection, CompanyDetailsSection,
   OwnershipSection, BankingSection, ReferencesSection,
-  ComplianceSection, DeclarationSection,
+  DeclarationSection,
 } from './FormSections';
 
 function KycPortalContent({ token }) {
@@ -187,8 +187,7 @@ function KycPortalContent({ token }) {
       case 3: return <OwnershipSection {...sectionProps} />;
       case 4: return <BankingSection {...sectionProps} />;
       case 5: return <ReferencesSection {...sectionProps} />;
-      case 6: return <ComplianceSection {...sectionProps} />;
-      case 7: return <DeclarationSection {...sectionProps} files={files} setFiles={setFiles} />;
+      case 6: return <DeclarationSection {...sectionProps} files={files} setFiles={setFiles} />;
       default: return null;
     }
   }

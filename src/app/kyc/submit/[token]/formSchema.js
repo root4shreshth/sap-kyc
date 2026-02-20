@@ -5,7 +5,6 @@ export const TABS = [
   { key: 'ownership', label: 'Ownership' },
   { key: 'banking', label: 'Banking' },
   { key: 'references', label: 'References' },
-  { key: 'compliance', label: 'Compliance' },
   { key: 'declaration', label: 'Declaration & Docs' },
 ];
 
@@ -96,28 +95,7 @@ export function getDefaultFormData() {
       { customerSupplier: '', contact: '', phoneEmail: '', typeOfBusiness: '', yearsRelationship: '', notes: '' },
     ],
 
-    // Section 7: Compliance & Reviews (from PNG)
-    regulatoryCompliance: [
-      { area: 'Ajman Free Zone / Local Authority Approvals', status: '', docsProvided: '', remarks: '', reputationScore: '' },
-      { area: 'Environmental / Health & Safety Compliance', status: '', docsProvided: '', remarks: '', reputationScore: '' },
-      { area: 'HACCP / ISO / Food Safety', status: '', docsProvided: '', remarks: '', reputationScore: '' },
-      { area: 'Labor / Social Compliance', status: '', docsProvided: '', remarks: '', reputationScore: '' },
-      { area: 'Customs / Import-Export Licensing', status: '', docsProvided: '', remarks: '', reputationScore: '' },
-      { area: 'Other Regulatory Requirements', status: '', docsProvided: '', remarks: '', reputationScore: '' },
-    ],
-    socialMediaReviews: [
-      { platform: '', entity: '', reviewSummary: '', rating: '', verifiedSource: '', actionRequired: '' },
-    ],
-    complianceChecklist: {
-      negSocialMediaConductCheck: false,
-      bankingCredibilityCheck: false,
-      regulatoryApprovalCheck: false,
-      additionalBackgroundCheck: false,
-      laborSafetyLicenseCheck: false,
-      licensingPermitCheck: false,
-    },
-
-    // Section 8: Declaration
+    // Section 7: Declaration
     declaration: {
       infoAccurate: false,
       authorizeVerification: false,
@@ -310,41 +288,6 @@ export function getMockFormData() {
         notes: 'Supplies bulk spices and dried herbs for private label and branded product lines.',
       },
     ],
-
-    regulatoryCompliance: [
-      { area: 'Ajman Free Zone / Local Authority Approvals', status: 'Compliant', docsProvided: 'Yes', remarks: 'Trade license valid through Dec 2025. Free Zone NOC on file.', reputationScore: '9/10' },
-      { area: 'Environmental / Health & Safety Compliance', status: 'Compliant', docsProvided: 'Yes', remarks: 'Annual EHS audit passed June 2024. Fire safety certificate renewed.', reputationScore: '8/10' },
-      { area: 'HACCP / ISO / Food Safety', status: 'Compliant', docsProvided: 'Yes', remarks: 'HACCP certified (valid to Oct 2025). ISO 22000:2018 certified.', reputationScore: '9/10' },
-      { area: 'Labor / Social Compliance', status: 'Compliant', docsProvided: 'Yes', remarks: 'WPS registered. All labor contracts compliant with MOHRE regulations.', reputationScore: '8/10' },
-      { area: 'Customs / Import-Export Licensing', status: 'Compliant', docsProvided: 'Yes', remarks: 'Customs code active. Import permits for food commodities current.', reputationScore: '9/10' },
-      { area: 'Other Regulatory Requirements', status: 'Compliant', docsProvided: 'Yes', remarks: 'Municipality food handling permits renewed March 2024.', reputationScore: '8/10' },
-    ],
-    socialMediaReviews: [
-      {
-        platform: 'Google Business',
-        entity: 'Golden Spice Trading Co. LLC',
-        reviewSummary: 'Highly rated for product quality and reliable delivery. Customers praise the freshness of spices and professional customer service. Minor complaints about packaging on a few orders.',
-        rating: '4.6/5 (128 reviews)',
-        verifiedSource: 'Yes',
-        actionRequired: 'No',
-      },
-      {
-        platform: 'LinkedIn',
-        entity: 'Golden Spice Trading Co. LLC',
-        reviewSummary: 'Strong professional presence with 2,400+ followers. Regular posts on food industry trends and partnerships. Positive engagement from GCC trade community. No negative press or adverse mentions found.',
-        rating: 'N/A - Professional Network',
-        verifiedSource: 'Yes',
-        actionRequired: 'No',
-      },
-    ],
-    complianceChecklist: {
-      negSocialMediaConductCheck: true,
-      bankingCredibilityCheck: true,
-      regulatoryApprovalCheck: true,
-      additionalBackgroundCheck: true,
-      laborSafetyLicenseCheck: true,
-      licensingPermitCheck: true,
-    },
 
     declaration: {
       infoAccurate: true,
