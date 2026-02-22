@@ -133,9 +133,12 @@ export function ProprietorsSection({ data, update, updateArray }) {
 }
 
 // ==================== SECTION 3: Company Details (UAE) ====================
-export function CompanyDetailsSection({ data, update }) {
+export function CompanyDetailsSection({ data, update, updateArray, addRow, removeRow }) {
   const d = data.companyDetails || {};
   const set = (field, val) => update('companyDetails', field, val);
+  const warehouses = data.warehouseAddresses || [];
+  const agent = d.borderAgent || {};
+  const setAgent = (field, val) => update('companyDetails.borderAgent', field, val);
 
   return (
     <div>
@@ -154,6 +157,30 @@ export function CompanyDetailsSection({ data, update }) {
         <Field label="Office Phone" value={d.officePhone} onChange={(v) => set('officePhone', v)} type="tel" />
         <Field label="Email" value={d.email} onChange={(v) => set('email', v)} type="email" />
         <Field label="Website / Social Media" value={d.websiteSocialMedia} onChange={(v) => set('websiteSocialMedia', v)} />
+      </div>
+
+      <SectionTitle>Registered Office & Warehouse Details</SectionTitle>
+      <Field label="Registered Office Address" value={d.registeredOfficeAddress} onChange={(v) => set('registeredOfficeAddress', v)} />
+
+      {warehouses.map((w, i) => (
+        <div key={i} className="dynamic-row">
+          {warehouses.length > 1 && (
+            <button type="button" className="dynamic-row-remove" onClick={() => removeRow('warehouseAddresses', i)}>&times;</button>
+          )}
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginBottom: 8 }}>Warehouse {i + 1}</div>
+          <Field label="Warehouse Address" value={w.address} onChange={(v) => updateArray('warehouseAddresses', i, 'address', v)} />
+        </div>
+      ))}
+      <button type="button" className="btn btn-secondary" style={{ marginTop: 4 }}
+        onClick={() => addRow('warehouseAddresses', { address: '' })}>
+        + Add Warehouse
+      </button>
+
+      <SectionTitle>Border / Clearing Agent</SectionTitle>
+      <div className="form-grid-3">
+        <Field label="Agent Name" value={agent.agentName} onChange={(v) => setAgent('agentName', v)} />
+        <Field label="Agent Contact" value={agent.agentContact} onChange={(v) => setAgent('agentContact', v)} />
+        <Field label="Agent Address" value={agent.agentAddress} onChange={(v) => setAgent('agentAddress', v)} />
       </div>
     </div>
   );
@@ -308,6 +335,45 @@ export function ReferencesSection({ data, updateArray, addRow, removeRow }) {
   );
 }
 
+// ==================== SECTION 6.5: Social Media Handles ====================
+export function SocialMediaSection({ data, update }) {
+  const sm = data.socialMedia || {};
+  const set = (field, val) => update('socialMedia', field, val);
+  return (
+    <div>
+      <SectionTitle>Social Media Handles</SectionTitle>
+      <div className="form-grid-2">
+        <Field label="Facebook" value={sm.facebook} onChange={(v) => set('facebook', v)} placeholder="https://facebook.com/..." />
+        <Field label="Instagram" value={sm.instagram} onChange={(v) => set('instagram', v)} placeholder="https://instagram.com/..." />
+      </div>
+      <div className="form-grid-2">
+        <Field label="Twitter / X" value={sm.twitter} onChange={(v) => set('twitter', v)} placeholder="https://x.com/..." />
+        <Field label="LinkedIn" value={sm.linkedin} onChange={(v) => set('linkedin', v)} placeholder="https://linkedin.com/..." />
+      </div>
+      <Field label="Others" value={sm.others} onChange={(v) => set('others', v)} placeholder="Any other social media links..." />
+    </div>
+  );
+}
+
+// ==================== SECTION 6.6: Indian Buyer Information ====================
+export function IndianBuyerSection({ data, update }) {
+  const ib = data.indianBuyerInfo || {};
+  const set = (field, val) => update('indianBuyerInfo', field, val);
+  return (
+    <div>
+      <SectionTitle>Indian Buyer Information</SectionTitle>
+      <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 12 }}>
+        Required only if the buyer is based in India.
+      </p>
+      <div className="form-grid-3">
+        <Field label="FSSAI Number" value={ib.fssaiNumber} onChange={(v) => set('fssaiNumber', v)} placeholder="14-digit FSSAI number" />
+        <Field label="PAN Number" value={ib.panNumber} onChange={(v) => set('panNumber', v)} placeholder="ABCDE1234F" />
+        <Field label="IEC Number" value={ib.iecNumber} onChange={(v) => set('iecNumber', v)} placeholder="Import Export Code" />
+      </div>
+    </div>
+  );
+}
+
 // ==================== SECTION 7: Compliance & Reviews ====================
 export function ComplianceSection({ data, updateArray, addRow, removeRow, update }) {
   const reg = data.regulatoryCompliance || [];
@@ -386,10 +452,20 @@ export function DeclarationSection({ data, update, files, setFiles }) {
   const decl = data.declaration || {};
   const setDecl = (field, val) => update('declaration', field, val);
 
-  const DOC_TYPES = ['Trade License', 'Passport', 'Emirates ID', 'VAT Certificate', 'Bank Statement', 'Other'];
+  const DOC_TYPES = [
+    'Certificate of Incorporation / Trade License',
+    'Memorandum & Articles of Association',
+    'Audited Financial Statements (Last 2 Years)',
+    'Copy of Passports for all UBOs and Directors',
+    'Proof of Address for Business (Utility Bill < 3 months)',
+    'List of Authorized Signatories (Company Letterhead)',
+    'Copy of Insurance Policy',
+    'Organisation Chart',
+    'Other',
+  ];
 
   function addFile() {
-    setFiles((f) => [...f, { file: null, docType: 'Trade License' }]);
+    setFiles((f) => [...f, { file: null, docType: DOC_TYPES[0] }]);
   }
   function updateFile(index, field, value) {
     setFiles((f) => f.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
@@ -407,6 +483,14 @@ export function DeclarationSection({ data, update, files, setFiles }) {
             checked={decl.infoAccurate} onChange={(v) => setDecl('infoAccurate', v)} />
           <Checkbox label="I/We authorize verification of social media, bank references, and regulatory compliance."
             checked={decl.authorizeVerification} onChange={(v) => setDecl('authorizeVerification', v)} />
+          <Checkbox label="I/We declare that we are not involved in any money laundering activities."
+            checked={decl.notMoneyLaundering} onChange={(v) => setDecl('notMoneyLaundering', v)} />
+          <Checkbox label="I/We declare that we are not involved in any terrorist funding activities."
+            checked={decl.notTerroristFunding} onChange={(v) => setDecl('notTerroristFunding', v)} />
+          <Checkbox label="I/We declare that we are not dealing with any UN/US/EU/GCC sanctioned country."
+            checked={decl.notSanctionedCountry} onChange={(v) => setDecl('notSanctionedCountry', v)} />
+          <Checkbox label="I/We declare that we are not related to any Political party."
+            checked={decl.notPoliticalParty} onChange={(v) => setDecl('notPoliticalParty', v)} />
         </div>
       </div>
       <div className="form-grid-3">
@@ -416,6 +500,26 @@ export function DeclarationSection({ data, update, files, setFiles }) {
       </div>
 
       <SectionTitle>Upload Supporting Documents</SectionTitle>
+
+      <div style={{
+        background: 'var(--gray-50)', border: '1px solid var(--gray-200)',
+        padding: 16, borderRadius: 'var(--radius)', marginBottom: 20,
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginBottom: 8 }}>
+          Required Documents Checklist
+        </div>
+        <ul style={{ fontSize: 13, color: 'var(--gray-600)', margin: 0, paddingLeft: 20, lineHeight: 1.8 }}>
+          <li>Certificate of Incorporation / Trade License</li>
+          <li>Memorandum & Articles of Association</li>
+          <li>Audited Financial Statements (Last 2 Years)</li>
+          <li>Copy of Passports for all UBOs and Directors</li>
+          <li>Proof of Address for Business (Utility Bill less than 3 months old)</li>
+          <li>List of Authorized Signatories (on Company Letterhead)</li>
+          <li>Copy of Insurance Policy</li>
+          <li>Organisation Chart</li>
+        </ul>
+      </div>
+
       <p style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 16 }}>
         Accepted formats: PDF, JPEG, PNG, WebP. Max 10MB per file. Documents are optional.
       </p>

@@ -281,16 +281,23 @@ const FORM_HEADERS = [
   'AP Contact Name', 'AP Contact Email', 'AP Contact Phone', 'AP Contact Mobile',
   // Company Details
   'Company Name (License)', 'Trade License No', 'Trade License Expiry', 'MQA/Reg No',
-  'VAT Reg No', 'Company Address', 'Office Phone', 'Company Email', 'Website/Social',
+  'VAT Reg No', 'Company Address', 'Registered Office', 'Office Phone', 'Company Email', 'Website/Social',
+  'Border Agent Name', 'Border Agent Contact', 'Border Agent Address',
   // Bank Reference
   'Bank Name', 'Bank Address', 'Bank City', 'Bank Province', 'Bank Postal',
   'Bank Contact', 'Bank Email', 'Bank Years Relationship', 'Bank Phone',
+  // Social Media
+  'Facebook', 'Instagram', 'Twitter/X', 'LinkedIn', 'Others (Social)',
+  // Indian Buyer
+  'FSSAI Number', 'PAN Number', 'IEC Number',
   // Declaration
   'Decl: Info Accurate', 'Decl: Authorize Verification',
+  'Decl: Not Money Laundering', 'Decl: Not Terrorist Funding',
+  'Decl: Not Sanctioned Country', 'Decl: Not Political Party',
   'Signature Name', 'Signature Position', 'Signature Date',
   // Counts
   'Proprietors Count', 'Owners Count', 'Banking Checks Count',
-  'Supplier Refs Count', 'Trade Refs Count',
+  'Supplier Refs Count', 'Trade Refs Count', 'Warehouse Count',
 ];
 
 function formDataToRow(kycId, fd) {
@@ -299,7 +306,10 @@ function formDataToRow(kycId, fd) {
   const bt = bi.businessType || {};
   const mi = fd.managerInfo || {};
   const cd = fd.companyDetails || {};
+  const ba = cd.borderAgent || {};
   const br = fd.bankReference || {};
+  const sm = fd.socialMedia || {};
+  const ib = fd.indianBuyerInfo || {};
   const decl = fd.declaration || {};
 
   return [
@@ -315,17 +325,23 @@ function formDataToRow(kycId, fd) {
     mi.apContactName || '', mi.apContactEmail || '', mi.apContactPhone || '', mi.apContactMobile || '',
     cd.companyName || '', cd.tradeLicenseNo || '', cd.tradeLicenseExpiry || '',
     cd.mqaRegistrationNo || '', cd.vatRegistrationNo || '', cd.companyAddress || '',
-    cd.officePhone || '', cd.email || '', cd.websiteSocialMedia || '',
+    cd.registeredOfficeAddress || '', cd.officePhone || '', cd.email || '', cd.websiteSocialMedia || '',
+    ba.agentName || '', ba.agentContact || '', ba.agentAddress || '',
     br.bankName || '', br.address || '', br.city || '', br.provinceState || '',
     br.postalZipCode || '', br.contactName || '', br.email || '',
     br.yearsRelationship || '', br.phone || '',
+    sm.facebook || '', sm.instagram || '', sm.twitter || '', sm.linkedin || '', sm.others || '',
+    ib.fssaiNumber || '', ib.panNumber || '', ib.iecNumber || '',
     decl.infoAccurate ? 'Yes' : 'No', decl.authorizeVerification ? 'Yes' : 'No',
+    decl.notMoneyLaundering ? 'Yes' : 'No', decl.notTerroristFunding ? 'Yes' : 'No',
+    decl.notSanctionedCountry ? 'Yes' : 'No', decl.notPoliticalParty ? 'Yes' : 'No',
     decl.signatureName || '', decl.signaturePosition || '', decl.signatureDate || '',
     (fd.proprietors || []).length.toString(),
     (fd.ownershipManagement || []).length.toString(),
     (fd.bankingChecks || []).length.toString(),
     (fd.supplierReferences || []).length.toString(),
     (fd.tradeReferences || []).length.toString(),
+    (fd.warehouseAddresses || []).length.toString(),
   ];
 }
 

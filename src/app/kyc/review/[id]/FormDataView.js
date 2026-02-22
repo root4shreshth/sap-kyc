@@ -57,11 +57,15 @@ export default function FormDataView({ data }) {
   const props = data.proprietors || [];
   const mgr = data.managerInfo || {};
   const cd = data.companyDetails || {};
+  const ba = cd.borderAgent || {};
+  const wh = data.warehouseAddresses || [];
   const om = data.ownershipManagement || [];
   const br = data.bankReference || {};
   const bc = data.bankingChecks || [];
   const sr = data.supplierReferences || [];
   const tr = data.tradeReferences || [];
+  const sm = data.socialMedia || {};
+  const ib = data.indianBuyerInfo || {};
   const decl = data.declaration || {};
 
   return (
@@ -119,9 +123,28 @@ export default function FormDataView({ data }) {
         <Row label="MQA / Registration No." value={cd.mqaRegistrationNo} />
         <Row label="VAT Registration No." value={cd.vatRegistrationNo} />
         <Row label="Company Address" value={cd.companyAddress} />
+        <Row label="Registered Office" value={cd.registeredOfficeAddress} />
         <Row label="Office Phone" value={cd.officePhone} />
         <Row label="Email" value={cd.email} />
         <Row label="Website / Social Media" value={cd.websiteSocialMedia} />
+
+        {wh.length > 0 && wh.some(w => w.address) && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginBottom: 6 }}>Warehouse Addresses</div>
+            {wh.filter(w => w.address).map((w, i) => (
+              <Row key={i} label={`Warehouse ${i + 1}`} value={w.address} />
+            ))}
+          </div>
+        )}
+
+        {(ba.agentName || ba.agentContact || ba.agentAddress) && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginBottom: 6 }}>Border / Clearing Agent</div>
+            <Row label="Agent Name" value={ba.agentName} />
+            <Row label="Agent Contact" value={ba.agentContact} />
+            <Row label="Agent Address" value={ba.agentAddress} />
+          </div>
+        )}
       </Section>
 
       <Section title="4. Ownership & Management Details">
@@ -183,9 +206,29 @@ export default function FormDataView({ data }) {
         )}
       </Section>
 
-      <Section title="7. Declaration & Authorization">
+      <Section title="7. Social Media Handles">
+        <Row label="Facebook" value={sm.facebook} />
+        <Row label="Instagram" value={sm.instagram} />
+        <Row label="Twitter / X" value={sm.twitter} />
+        <Row label="LinkedIn" value={sm.linkedin} />
+        <Row label="Others" value={sm.others} />
+      </Section>
+
+      {(ib.fssaiNumber || ib.panNumber || ib.iecNumber) && (
+        <Section title="8. Indian Buyer Information">
+          <Row label="FSSAI Number" value={ib.fssaiNumber} />
+          <Row label="PAN Number" value={ib.panNumber} />
+          <Row label="IEC Number" value={ib.iecNumber} />
+        </Section>
+      )}
+
+      <Section title="9. Declaration & Authorization">
         <BoolRow label="All information provided is true and accurate" value={decl.infoAccurate} />
         <BoolRow label="Authorize verification of social media, bank references, and compliance" value={decl.authorizeVerification} />
+        <BoolRow label="Not involved in any money laundering activities" value={decl.notMoneyLaundering} />
+        <BoolRow label="Not involved in any terrorist funding activities" value={decl.notTerroristFunding} />
+        <BoolRow label="Not dealing with any UN/US/EU/GCC sanctioned country" value={decl.notSanctionedCountry} />
+        <BoolRow label="Not related to any political party" value={decl.notPoliticalParty} />
         <Row label="Signature (Name)" value={decl.signatureName} />
         <Row label="Position / Title" value={decl.signaturePosition} />
         <Row label="Date" value={decl.signatureDate} />

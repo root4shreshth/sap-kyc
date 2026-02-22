@@ -25,6 +25,11 @@ const COMPLIANCE_CHECKS = [
   { checkKey: 'food_safety_haccp', label: 'Food Safety / HACCP / ISO Certification', category: 'Operational Compliance' },
   { checkKey: 'labor_compliance', label: 'Labor & Safety Compliance', category: 'Operational Compliance' },
   { checkKey: 'environmental_health', label: 'Environmental / Health & Safety', category: 'Operational Compliance' },
+  // Compliance & Counter-Fraud
+  { checkKey: 'aml_ctf_policy', label: 'AML/CTF Policy Compliance', category: 'Compliance & Counter-Fraud' },
+  { checkKey: 'abc_policy', label: 'Anti-Bribery & Corruption (ABC) Policy', category: 'Compliance & Counter-Fraud' },
+  { checkKey: 'adverse_media_search', label: 'Adverse Media Search', category: 'Compliance & Counter-Fraud' },
+  { checkKey: 'litigation_history', label: 'Litigation History', category: 'Compliance & Counter-Fraud' },
   // Document Completeness
   { checkKey: 'document_completeness', label: 'Supporting Document Completeness', category: 'Document Completeness' },
   { checkKey: 'declaration_signed', label: 'Declaration Signed & Authorized', category: 'Document Completeness' },

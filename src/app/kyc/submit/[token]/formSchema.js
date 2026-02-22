@@ -5,6 +5,8 @@ export const TABS = [
   { key: 'ownership', label: 'Ownership' },
   { key: 'banking', label: 'Banking' },
   { key: 'references', label: 'References' },
+  { key: 'social', label: 'Social Media' },
+  { key: 'indian', label: 'Indian Buyer' },
   { key: 'declaration', label: 'Declaration & Docs' },
 ];
 
@@ -62,7 +64,16 @@ export function getDefaultFormData() {
       officePhone: '',
       email: '',
       websiteSocialMedia: '',
+      registeredOfficeAddress: '',
+      borderAgent: {
+        agentName: '',
+        agentContact: '',
+        agentAddress: '',
+      },
     },
+
+    // Warehouse Addresses
+    warehouseAddresses: [{ address: '' }],
 
     // Section 4: Ownership & Management (from PNG)
     ownershipManagement: [
@@ -95,10 +106,30 @@ export function getDefaultFormData() {
       { customerSupplier: '', contact: '', phoneEmail: '', typeOfBusiness: '', yearsRelationship: '', notes: '' },
     ],
 
-    // Section 7: Declaration
+    // Section 7: Social Media
+    socialMedia: {
+      facebook: '',
+      instagram: '',
+      twitter: '',
+      linkedin: '',
+      others: '',
+    },
+
+    // Section 8: Indian Buyer Info
+    indianBuyerInfo: {
+      fssaiNumber: '',
+      panNumber: '',
+      iecNumber: '',
+    },
+
+    // Section 9: Declaration
     declaration: {
       infoAccurate: false,
       authorizeVerification: false,
+      notMoneyLaundering: false,
+      notTerroristFunding: false,
+      notSanctionedCountry: false,
+      notPoliticalParty: false,
       signatureName: '',
       signaturePosition: '',
       signatureDate: '',
@@ -171,7 +202,18 @@ export function getMockFormData() {
       officePhone: '+971 6 742 8800',
       email: 'info@goldenspicetrading.ae',
       websiteSocialMedia: 'www.goldenspicetrading.ae | @goldenspiceuae (Instagram) | linkedin.com/company/goldenspicetrading',
+      registeredOfficeAddress: 'Plot B-14, Block 3, Ajman Free Zone, Ajman, UAE',
+      borderAgent: {
+        agentName: 'Gulf Clearing Services LLC',
+        agentContact: '+971 6 731 5500 | clearing@gulfcs.ae',
+        agentAddress: 'Office 204, Ajman Port Building, Ajman, UAE',
+      },
     },
+
+    warehouseAddresses: [
+      { address: 'Warehouse 7, Block B-14, Ajman Free Zone, Ajman, UAE' },
+      { address: 'Cold Storage Unit 3, Al Jurf Industrial, Ajman, UAE' },
+    ],
 
     ownershipManagement: [
       {
@@ -247,7 +289,7 @@ export function getMockFormData() {
       },
       {
         name: 'Istanbul Gourmet Ingredients A.S.',
-        address: 'Atatürk Industrial Zone, No. 78',
+        address: 'Atat\u00FCrk Industrial Zone, No. 78',
         city: 'Istanbul',
         provinceState: 'Istanbul',
         postalZipCode: '34065',
@@ -289,9 +331,27 @@ export function getMockFormData() {
       },
     ],
 
+    socialMedia: {
+      facebook: 'https://facebook.com/goldenspiceuae',
+      instagram: 'https://instagram.com/goldenspiceuae',
+      twitter: 'https://x.com/goldenspiceuae',
+      linkedin: 'https://linkedin.com/company/goldenspicetrading',
+      others: 'https://youtube.com/@goldenspiceuae',
+    },
+
+    indianBuyerInfo: {
+      fssaiNumber: '',
+      panNumber: '',
+      iecNumber: '',
+    },
+
     declaration: {
       infoAccurate: true,
       authorizeVerification: true,
+      notMoneyLaundering: true,
+      notTerroristFunding: true,
+      notSanctionedCountry: true,
+      notPoliticalParty: true,
       signatureName: 'Ahmed Khalid Al Mansouri',
       signaturePosition: 'Managing Director',
       signatureDate: '2024-11-18',

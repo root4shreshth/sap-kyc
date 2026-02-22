@@ -24,7 +24,9 @@ CREATE TABLE IF NOT EXISTS kyc (
   created_by   TEXT NOT NULL,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  form_data    JSONB DEFAULT '{}'
+  form_data    JSONB DEFAULT '{}',
+  pep_status   TEXT DEFAULT '',
+  pep_details  TEXT DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS kyc_docs (
@@ -92,6 +94,25 @@ CREATE TABLE IF NOT EXISTS kyc_form (
   cd_office_phone             TEXT DEFAULT '',
   cd_email                    TEXT DEFAULT '',
   cd_website_social_media     TEXT DEFAULT '',
+  cd_registered_office_address TEXT DEFAULT '',
+  cd_agent_name               TEXT DEFAULT '',
+  cd_agent_contact             TEXT DEFAULT '',
+  cd_agent_address             TEXT DEFAULT '',
+
+  sm_facebook                  TEXT DEFAULT '',
+  sm_instagram                 TEXT DEFAULT '',
+  sm_twitter                   TEXT DEFAULT '',
+  sm_linkedin                  TEXT DEFAULT '',
+  sm_others                    TEXT DEFAULT '',
+
+  ib_fssai_number              TEXT DEFAULT '',
+  ib_pan_number                TEXT DEFAULT '',
+  ib_iec_number                TEXT DEFAULT '',
+
+  decl_not_money_laundering    BOOLEAN DEFAULT FALSE,
+  decl_not_terrorist_funding   BOOLEAN DEFAULT FALSE,
+  decl_not_sanctioned_country  BOOLEAN DEFAULT FALSE,
+  decl_not_political_party     BOOLEAN DEFAULT FALSE,
 
   br_bank_name                TEXT DEFAULT '',
   br_address                  TEXT DEFAULT '',
@@ -211,6 +232,13 @@ CREATE TABLE IF NOT EXISTS kyc_social_media_reviews (
   action_required TEXT DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS kyc_warehouse_addresses (
+  id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  kyc_id     UUID NOT NULL REFERENCES kyc(id) ON DELETE CASCADE,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  address    TEXT DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS kyc_compliance_results (
   id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   kyc_id          UUID NOT NULL REFERENCES kyc(id) ON DELETE CASCADE,
@@ -234,7 +262,7 @@ const ALL_TABLES = [
   'users', 'kyc', 'kyc_docs', 'audit_log',
   'kyc_form', 'kyc_proprietors', 'kyc_ownership_management',
   'kyc_banking_checks', 'kyc_supplier_references', 'kyc_trade_references',
-  'kyc_regulatory_compliance', 'kyc_social_media_reviews', 'kyc_compliance_results',
+  'kyc_regulatory_compliance', 'kyc_social_media_reviews', 'kyc_warehouse_addresses', 'kyc_compliance_results',
 ];
 
 export async function POST() {

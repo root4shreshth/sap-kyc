@@ -56,7 +56,7 @@ export async function getAllKyc() {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('kyc')
-    .select('id, client_name, company_name, email, status, remarks, created_by, created_at, updated_at')
+    .select('id, client_name, company_name, email, status, remarks, pep_status, pep_details, created_by, created_at, updated_at')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data || []).map(row => ({
@@ -66,6 +66,8 @@ export async function getAllKyc() {
     email: row.email,
     status: row.status,
     remarks: row.remarks,
+    pepStatus: row.pep_status || '',
+    pepDetails: row.pep_details || '',
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -114,22 +116,27 @@ export async function getKycById(id) {
     tokenExpiry: data.token_expiry,
     status: data.status,
     remarks: data.remarks,
+    pepStatus: data.pep_status || '',
+    pepDetails: data.pep_details || '',
     createdBy: data.created_by,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
   };
 }
 
-export async function updateKycStatus(id, { status, remarks }) {
+export async function updateKycStatus(id, { status, remarks, pepStatus, pepDetails }) {
   const supabase = getSupabase();
   const now = new Date().toISOString();
+  const updateData = {
+    status,
+    remarks: remarks !== undefined ? remarks : '',
+    updated_at: now,
+  };
+  if (pepStatus !== undefined) updateData.pep_status = pepStatus;
+  if (pepDetails !== undefined) updateData.pep_details = pepDetails;
   const { error } = await supabase
     .from('kyc')
-    .update({
-      status,
-      remarks: remarks !== undefined ? remarks : '',
-      updated_at: now,
-    })
+    .update(updateData)
     .eq('id', id);
   if (error) throw error;
 
@@ -198,6 +205,25 @@ const SCALAR_MAP = {
   cd_office_phone:            { section: 'companyDetails', field: 'officePhone' },
   cd_email:                   { section: 'companyDetails', field: 'email' },
   cd_website_social_media:    { section: 'companyDetails', field: 'websiteSocialMedia' },
+  cd_registered_office_address: { section: 'companyDetails', field: 'registeredOfficeAddress' },
+  cd_agent_name:               { section: 'companyDetails.borderAgent', field: 'agentName' },
+  cd_agent_contact:            { section: 'companyDetails.borderAgent', field: 'agentContact' },
+  cd_agent_address:            { section: 'companyDetails.borderAgent', field: 'agentAddress' },
+
+  sm_facebook:                 { section: 'socialMedia', field: 'facebook' },
+  sm_instagram:                { section: 'socialMedia', field: 'instagram' },
+  sm_twitter:                  { section: 'socialMedia', field: 'twitter' },
+  sm_linkedin:                 { section: 'socialMedia', field: 'linkedin' },
+  sm_others:                   { section: 'socialMedia', field: 'others' },
+
+  ib_fssai_number:             { section: 'indianBuyerInfo', field: 'fssaiNumber' },
+  ib_pan_number:               { section: 'indianBuyerInfo', field: 'panNumber' },
+  ib_iec_number:               { section: 'indianBuyerInfo', field: 'iecNumber' },
+
+  decl_not_money_laundering:   { section: 'declaration', field: 'notMoneyLaundering', type: 'boolean' },
+  decl_not_terrorist_funding:  { section: 'declaration', field: 'notTerroristFunding', type: 'boolean' },
+  decl_not_sanctioned_country: { section: 'declaration', field: 'notSanctionedCountry', type: 'boolean' },
+  decl_not_political_party:    { section: 'declaration', field: 'notPoliticalParty', type: 'boolean' },
 
   br_bank_name:               { section: 'bankReference', field: 'bankName' },
   br_address:                 { section: 'bankReference', field: 'address' },
@@ -259,6 +285,11 @@ const ARRAY_TABLES = [
     table: 'kyc_social_media_reviews',
     jsonKey: 'socialMediaReviews',
     columns: { platform: 'platform', entity: 'entity', review_summary: 'reviewSummary', rating: 'rating', verified_source: 'verifiedSource', action_required: 'actionRequired' },
+  },
+  {
+    table: 'kyc_warehouse_addresses',
+    jsonKey: 'warehouseAddresses',
+    columns: { address: 'address' },
   },
 ];
 

@@ -1,18 +1,17 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { kycApi } from '@/lib/api-client';
 import { TABS, getDefaultFormData, getMockFormData } from './formSchema';
 import {
   BusinessInfoSection, ProprietorsSection, CompanyDetailsSection,
   OwnershipSection, BankingSection, ReferencesSection,
-  DeclarationSection,
+  SocialMediaSection, IndianBuyerSection, DeclarationSection,
 } from './FormSections';
 
 function KycPortalContent({ token }) {
   const [info, setInfo] = useState(null);
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState(0);
   const [formData, setFormData] = useState(getDefaultFormData());
   const [files, setFiles] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -20,6 +19,8 @@ function KycPortalContent({ token }) {
   const [success, setSuccess] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
   const [demoMode, setDemoMode] = useState(false);
+  const [activeSection, setActiveSection] = useState(0);
+  const sectionRefs = useRef([]);
 
   useEffect(() => {
     kycApi.portalValidate(token)
@@ -34,6 +35,29 @@ function KycPortalContent({ token }) {
       })
       .catch((e) => setError(e.message));
   }, [token]);
+
+  // Track which section is in view
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const idx = sectionRefs.current.indexOf(entry.target);
+            if (idx !== -1) setActiveSection(idx);
+          }
+        }
+      },
+      { threshold: 0.3, rootMargin: '-80px 0px -50% 0px' }
+    );
+    sectionRefs.current.forEach((ref) => {
+      if (ref) observer.observe(ref);
+    });
+    return () => observer.disconnect();
+  }, [info]);
+
+  const scrollToSection = (index) => {
+    sectionRefs.current[index]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const update = useCallback((section, field, value) => {
     setFormData((prev) => {
@@ -150,7 +174,6 @@ function KycPortalContent({ token }) {
       const mock = getMockFormData();
       setFormData(mock);
       setDemoMode(true);
-      // Auto-save to Supabase
       setSaving(true);
       try {
         await kycApi.portalSaveForm(token, mock);
@@ -164,7 +187,6 @@ function KycPortalContent({ token }) {
       const blank = getDefaultFormData();
       setFormData(blank);
       setDemoMode(false);
-      // Auto-save blank to Supabase
       setSaving(true);
       try {
         await kycApi.portalSaveForm(token, blank);
@@ -179,18 +201,17 @@ function KycPortalContent({ token }) {
 
   const sectionProps = { data: formData, update, updateArray, addRow, removeRow };
 
-  function renderSection() {
-    switch (activeTab) {
-      case 0: return <BusinessInfoSection {...sectionProps} />;
-      case 1: return <ProprietorsSection {...sectionProps} />;
-      case 2: return <CompanyDetailsSection {...sectionProps} />;
-      case 3: return <OwnershipSection {...sectionProps} />;
-      case 4: return <BankingSection {...sectionProps} />;
-      case 5: return <ReferencesSection {...sectionProps} />;
-      case 6: return <DeclarationSection {...sectionProps} files={files} setFiles={setFiles} />;
-      default: return null;
-    }
-  }
+  const SECTIONS = [
+    { label: 'Business Info', component: <BusinessInfoSection {...sectionProps} /> },
+    { label: 'Proprietors', component: <ProprietorsSection {...sectionProps} /> },
+    { label: 'Company (UAE)', component: <CompanyDetailsSection {...sectionProps} /> },
+    { label: 'Ownership', component: <OwnershipSection {...sectionProps} /> },
+    { label: 'Banking', component: <BankingSection {...sectionProps} /> },
+    { label: 'References', component: <ReferencesSection {...sectionProps} /> },
+    { label: 'Social Media', component: <SocialMediaSection {...sectionProps} /> },
+    { label: 'Indian Buyer', component: <IndianBuyerSection {...sectionProps} /> },
+    { label: 'Declaration & Docs', component: <DeclarationSection {...sectionProps} files={files} setFiles={setFiles} /> },
+  ];
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--gray-100)', padding: '32px 16px' }}>
@@ -203,7 +224,7 @@ function KycPortalContent({ token }) {
           </p>
         </div>
 
-        {/* Demo toggle - remove later */}
+        {/* Demo toggle */}
         <div style={{ textAlign: 'right', marginBottom: 12 }}>
           <button
             onClick={toggleDemoData}
@@ -240,44 +261,72 @@ function KycPortalContent({ token }) {
           </div>
         </div>
 
-        <div className="form-tabs">
-          {TABS.map((tab, i) => (
-            <button key={tab.key} className={`form-tab ${activeTab === i ? 'form-tab-active' : ''}`}
-              onClick={() => setActiveTab(i)}>
-              {i + 1}. {tab.label}
-            </button>
-          ))}
+        {/* Section Navigation - sticky */}
+        <div style={{
+          position: 'sticky', top: 0, zIndex: 10,
+          background: 'var(--gray-100)', padding: '8px 0', marginBottom: 8,
+        }}>
+          <div style={{
+            display: 'flex', gap: 4, overflowX: 'auto', padding: '4px 0',
+            scrollbarWidth: 'thin',
+          }}>
+            {SECTIONS.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => scrollToSection(i)}
+                style={{
+                  padding: '6px 12px',
+                  fontSize: 12,
+                  fontWeight: activeSection === i ? 700 : 500,
+                  border: 'none',
+                  borderRadius: 20,
+                  background: activeSection === i ? 'var(--navy)' : 'white',
+                  color: activeSection === i ? 'white' : 'var(--gray-600)',
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.2s ease',
+                  boxShadow: activeSection === i ? '0 2px 8px rgba(15,23,42,0.2)' : '0 1px 3px rgba(0,0,0,0.1)',
+                  flexShrink: 0,
+                }}
+              >
+                {i + 1}. {s.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="card" style={{ marginBottom: 16 }}>
-          {renderSection()}
-        </div>
+        {/* All sections on single page */}
+        {SECTIONS.map((s, i) => (
+          <div
+            key={i}
+            ref={(el) => { sectionRefs.current[i] = el; }}
+            className="card"
+            style={{ marginBottom: 16, scrollMarginTop: 60 }}
+          >
+            <h3 style={{
+              fontSize: 15, fontWeight: 700, color: 'var(--navy)',
+              marginBottom: 16, paddingBottom: 8,
+              borderBottom: '2px solid var(--gray-200)',
+            }}>
+              {i + 1}. {s.label}
+            </h3>
+            {s.component}
+          </div>
+        ))}
 
         {error && <p className="error-msg" style={{ marginBottom: 12 }}>{error}</p>}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {activeTab > 0 && (
-              <button className="btn btn-secondary" onClick={() => setActiveTab(activeTab - 1)}>
-                &larr; Previous
-              </button>
-            )}
-            {activeTab < TABS.length - 1 && (
-              <button className="btn btn-secondary" onClick={() => setActiveTab(activeTab + 1)}>
-                Next &rarr;
-              </button>
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary" onClick={handleSaveDraft} disabled={saving}>
-              {saving ? 'Saving...' : 'Save Draft'}
-            </button>
-            {activeTab === TABS.length - 1 && (
-              <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
-                {submitting ? 'Submitting...' : 'Submit Application'}
-              </button>
-            )}
-          </div>
+        {/* Bottom action bar */}
+        <div style={{
+          display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 12,
+          flexWrap: 'wrap', marginBottom: 32,
+        }}>
+          <button className="btn btn-secondary" onClick={handleSaveDraft} disabled={saving}>
+            {saving ? 'Saving...' : 'Save Draft'}
+          </button>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
+            {submitting ? 'Submitting...' : 'Submit Application'}
+          </button>
         </div>
       </div>
     </div>

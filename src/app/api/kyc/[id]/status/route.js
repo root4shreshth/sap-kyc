@@ -9,7 +9,7 @@ export async function PATCH(request, { params }) {
 
   try {
     const { id } = await params;
-    const { status, remarks } = await request.json();
+    const { status, remarks, pepStatus, pepDetails } = await request.json();
     const validStatuses = ['Under Review', 'Approved', 'Rejected'];
     if (!validStatuses.includes(status)) {
       return NextResponse.json({ error: `Status must be one of: ${validStatuses.join(', ')}` }, { status: 400 });
@@ -20,7 +20,7 @@ export async function PATCH(request, { params }) {
       return NextResponse.json({ error: 'KYC request not found' }, { status: 404 });
     }
 
-    await updateKycStatus(id, { status, remarks });
+    await updateKycStatus(id, { status, remarks, pepStatus, pepDetails });
 
     await createAuditEntry({
       action: `KYC_STATUS_${status.toUpperCase().replace(' ', '_')}`,

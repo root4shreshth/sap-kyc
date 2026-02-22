@@ -27,6 +27,8 @@ function KycReviewContent({ id }) {
   const [updating, setUpdating] = useState(false);
   const [updateMsg, setUpdateMsg] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [pepStatus, setPepStatus] = useState('');
+  const [pepDetails, setPepDetails] = useState('');
 
   useEffect(() => {
     Promise.all([kycApi.list(), kycApi.getDocs(id), kycApi.getFormData(id)])
@@ -36,6 +38,8 @@ function KycReviewContent({ id }) {
         else {
           setKycData(found);
           setRemarks(found.remarks || '');
+          setPepStatus(found.pepStatus || '');
+          setPepDetails(found.pepDetails || '');
         }
         setDocs(docList);
         if (fd && Object.keys(fd).length > 0) setFormData(fd);
@@ -50,9 +54,9 @@ function KycReviewContent({ id }) {
     setUpdateMsg('');
     setUpdating(true);
     try {
-      const result = await kycApi.updateStatus(id, status, remarks);
+      const result = await kycApi.updateStatus(id, status, remarks, pepStatus, pepDetails);
       setUpdateMsg(result.message);
-      setKycData((prev) => ({ ...prev, status, remarks }));
+      setKycData((prev) => ({ ...prev, status, remarks, pepStatus, pepDetails }));
       setStatus('');
     } catch (err) {
       setError(err.message);
@@ -199,11 +203,57 @@ function KycReviewContent({ id }) {
                   <label>Remarks</label>
                   <textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} rows={3} placeholder="Optional remarks..." style={{ resize: 'vertical' }} />
                 </div>
+
+                <div style={{ marginTop: 12, padding: 16, background: 'var(--gray-50)', borderRadius: 'var(--radius)' }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--navy)', marginBottom: 8 }}>PEP Status</div>
+                  <div style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 8 }}>
+                    Are any UBOs, Directors, or Senior Managers Politically Exposed Persons?
+                  </div>
+                  <div className="form-group">
+                    <select value={pepStatus} onChange={(e) => setPepStatus(e.target.value)}>
+                      <option value="">Select...</option>
+                      <option value="No">No</option>
+                      <option value="Yes">Yes</option>
+                    </select>
+                  </div>
+                  {pepStatus === 'Yes' && (
+                    <div className="form-group">
+                      <label>PEP Details</label>
+                      <textarea
+                        value={pepDetails}
+                        onChange={(e) => setPepDetails(e.target.value)}
+                        rows={2}
+                        placeholder="Provide details about the PEP relationship..."
+                        style={{ resize: 'vertical' }}
+                      />
+                    </div>
+                  )}
+                </div>
+
                 {error && <p className="error-msg">{error}</p>}
                 {updateMsg && <p className="success-msg">{updateMsg}</p>}
                 <button className="btn btn-primary" onClick={handleStatusUpdate} disabled={!status || updating} style={{ marginTop: 8 }}>
                   {updating ? 'Updating...' : 'Update Status'}
                 </button>
+              </div>
+            )}
+
+            {/* Show PEP Status if already set */}
+            {kycData.pepStatus && (
+              <div className="card" style={{ marginTop: 16 }}>
+                <h3 style={{ fontSize: 16, marginBottom: 8 }}>PEP Status</h3>
+                <div style={{ fontSize: 14 }}>
+                  <span style={{ color: 'var(--gray-500)' }}>PEP: </span>
+                  <span style={{
+                    fontWeight: 600,
+                    color: kycData.pepStatus === 'Yes' ? 'var(--red)' : 'var(--green)',
+                  }}>
+                    {kycData.pepStatus}
+                  </span>
+                  {kycData.pepDetails && (
+                    <div style={{ marginTop: 6, color: 'var(--gray-600)' }}>{kycData.pepDetails}</div>
+                  )}
+                </div>
               </div>
             )}
           </>

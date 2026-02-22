@@ -81,6 +81,16 @@ export async function GET(request, { params }) {
       y = doc.lastAutoTable.finalY + 8;
     }
 
+    function addCheckbox(label, checked) {
+      if (y > 280) { doc.addPage(); y = 15; }
+      doc.setFontSize(9);
+      doc.setTextColor(...NAVY);
+      doc.text(checked ? '[X]' : '[ ]', 17, y);
+      doc.setTextColor(...GRAY);
+      doc.text(label, 27, y);
+      y += 5;
+    }
+
     // ===== SECTION 1: Business Information =====
     const bi = formData.businessInfo || {};
     sectionHeader('1. Business Information');
@@ -133,9 +143,24 @@ export async function GET(request, { params }) {
     addRow('MQA Reg No.', cd.mqaRegistrationNo);
     addRow('VAT Reg No.', cd.vatRegistrationNo);
     addRow('Address', cd.companyAddress);
+    addRow('Registered Office', cd.registeredOfficeAddress);
     addRow('Phone', cd.officePhone);
     addRow('Email', cd.email);
     addRow('Website / Social Media', cd.websiteSocialMedia);
+
+    // Warehouse Addresses
+    const wh = formData.warehouseAddresses || [];
+    wh.forEach((w, i) => {
+      if (w.address) addRow(`Warehouse ${i + 1}`, w.address);
+    });
+
+    // Border Agent
+    const ba = cd.borderAgent || {};
+    if (ba.agentName || ba.agentContact) {
+      addRow('Border Agent', ba.agentName);
+      addRow('Agent Contact', ba.agentContact);
+      addRow('Agent Address', ba.agentAddress);
+    }
 
     // ===== SECTION 4: Ownership =====
     const om = formData.ownershipManagement || [];
@@ -182,14 +207,34 @@ export async function GET(request, { params }) {
       );
     }
 
-    // ===== SECTION 7: AI Compliance Check =====
+    // ===== SECTION 7: Social Media =====
+    const sm = formData.socialMedia || {};
+    if (sm.facebook || sm.instagram || sm.twitter || sm.linkedin || sm.others) {
+      sectionHeader('7. Social Media Handles');
+      addRow('Facebook', sm.facebook);
+      addRow('Instagram', sm.instagram);
+      addRow('Twitter / X', sm.twitter);
+      addRow('LinkedIn', sm.linkedin);
+      addRow('Others', sm.others);
+    }
+
+    // ===== SECTION 8: Indian Buyer Info =====
+    const ib = formData.indianBuyerInfo || {};
+    if (ib.fssaiNumber || ib.panNumber || ib.iecNumber) {
+      sectionHeader('8. Indian Buyer Information');
+      addRow('FSSAI Number', ib.fssaiNumber);
+      addRow('PAN Number', ib.panNumber);
+      addRow('IEC Number', ib.iecNumber);
+    }
+
+    // ===== SECTION 9: AI Compliance Check =====
     let complianceResults = [];
     try {
       complianceResults = await getComplianceResults(id);
     } catch { /* no results yet */ }
 
     if (complianceResults.length > 0) {
-      sectionHeader('7. Compliance Check (AI-Assisted)');
+      sectionHeader('9. Compliance Check (AI-Assisted)');
       const statusMap = { pass: 'PASS', fail: 'FAIL', warning: 'WARN', not_applicable: 'N/A', pending: '...' };
       addTable(
         ['Check', 'Category', 'AI Status', 'AI Remarks', 'Override', 'Admin Notes'],
@@ -204,24 +249,26 @@ export async function GET(request, { params }) {
       );
     }
 
-    // ===== SECTION 8: Declaration =====
+    // ===== SECTION 10: Declaration =====
     const decl = formData.declaration || {};
-    sectionHeader('8. Declaration & Authorization');
-    if (y > 280) { doc.addPage(); y = 15; }
-    doc.setFontSize(9);
-    doc.setTextColor(...NAVY);
-    doc.text(decl.infoAccurate ? '[X]' : '[ ]', 17, y);
-    doc.setTextColor(...GRAY);
-    doc.text('All information provided is true and accurate', 27, y);
-    y += 5;
-    doc.setTextColor(...NAVY);
-    doc.text(decl.authorizeVerification ? '[X]' : '[ ]', 17, y);
-    doc.setTextColor(...GRAY);
-    doc.text('Authorize verification of social media, bank references, and compliance', 27, y);
-    y += 7;
+    sectionHeader('10. Declaration & Authorization');
+    addCheckbox('All information provided is true and accurate', decl.infoAccurate);
+    addCheckbox('Authorize verification of social media, bank references, and compliance', decl.authorizeVerification);
+    addCheckbox('Not involved in any money laundering activities', decl.notMoneyLaundering);
+    addCheckbox('Not involved in any terrorist funding activities', decl.notTerroristFunding);
+    addCheckbox('Not dealing with any UN/US/EU/GCC sanctioned country', decl.notSanctionedCountry);
+    addCheckbox('Not related to any political party', decl.notPoliticalParty);
+    y += 2;
     addRow('Signed By', decl.signatureName);
     addRow('Position', decl.signaturePosition);
     addRow('Date', decl.signatureDate);
+
+    // PEP Status
+    if (kyc.pepStatus) {
+      y += 4;
+      addRow('PEP Status', kyc.pepStatus);
+      if (kyc.pepDetails) addRow('PEP Details', kyc.pepDetails);
+    }
 
     // Footer on all pages
     const pageCount = doc.internal.getNumberOfPages();

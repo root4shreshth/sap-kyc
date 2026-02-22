@@ -42,11 +42,11 @@ export const kycApi = {
   getDocs: (id) =>
     fetch(`/api/kyc/${id}/docs`, { headers: getHeaders() }).then(handleResponse),
 
-  updateStatus: (id, status, remarks) =>
+  updateStatus: (id, status, remarks, pepStatus, pepDetails) =>
     fetch(`/api/kyc/${id}/status`, {
       method: 'PATCH',
       headers: getHeaders(),
-      body: JSON.stringify({ status, remarks }),
+      body: JSON.stringify({ status, remarks, pepStatus, pepDetails }),
     }).then(handleResponse),
 
   downloadFile: async (fileId, fileName) => {
