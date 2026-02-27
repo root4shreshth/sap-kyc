@@ -10,7 +10,7 @@ export async function POST(request) {
   if (error) return error;
 
   try {
-    const { clientName, companyName, email } = await request.json();
+    const { clientName, companyName, email, ccEmail } = await request.json();
     if (!clientName || !companyName || !email) {
       return NextResponse.json({ error: 'clientName, companyName, email required' }, { status: 400 });
     }
@@ -40,7 +40,7 @@ export async function POST(request) {
     const detectedBase = host ? `${proto}://${host}` : null;
     const baseUrl = detectedBase || process.env.APP_BASE_URL || 'http://localhost:3000';
     const link = `${baseUrl.replace(/\/+$/, '')}/kyc/submit/${rawToken}`;
-    await sendKycInvite({ to: email, clientName, companyName, link });
+    await sendKycInvite({ to: email, cc: ccEmail || '', clientName, companyName, link });
 
     const response = { id, portalLink: link };
     if (isSmtpConfigured()) {

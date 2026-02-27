@@ -18,13 +18,13 @@ function getTransporter() {
 
 export { isSmtpConfigured };
 
-export async function sendKycInvite({ to, clientName, companyName, link }) {
+export async function sendKycInvite({ to, cc, clientName, companyName, link }) {
   if (!isSmtpConfigured()) {
     console.log('[DEMO] KYC invite email skipped. Link:', link);
     return;
   }
   const transporter = getTransporter();
-  await transporter.sendMail({
+  const mailOptions = {
     from: `"Alamir Operations" <${process.env.SMTP_USER}>`,
     to,
     subject: `KYC Verification Required – ${companyName}`,
@@ -40,7 +40,9 @@ export async function sendKycInvite({ to, clientName, companyName, link }) {
         <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0"/>
         <p style="color:#999;font-size:12px">Alamir International Trading L.L.C</p>
       </div>`,
-  });
+  };
+  if (cc) mailOptions.cc = cc;
+  await transporter.sendMail(mailOptions);
 }
 
 export async function sendStatusUpdate({ to, clientName, companyName, status, remarks }) {

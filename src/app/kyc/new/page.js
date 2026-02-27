@@ -7,7 +7,7 @@ import { kycApi } from '@/lib/api-client';
 
 function KycNewContent() {
   const router = useRouter();
-  const [form, setForm] = useState({ clientName: '', companyName: '', email: '' });
+  const [form, setForm] = useState({ clientName: '', companyName: '', email: '', ccEmail: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
@@ -78,7 +78,7 @@ function KycNewContent() {
             )}
 
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-              <button className="btn btn-primary" onClick={() => { setResult(null); setForm({ clientName: '', companyName: '', email: '' }); }}>
+              <button className="btn btn-primary" onClick={() => { setResult(null); setForm({ clientName: '', companyName: '', email: '', ccEmail: '' }); }}>
                 Create Another
               </button>
               <button className="btn btn-secondary" onClick={() => router.push('/kyc')}>
@@ -108,6 +108,13 @@ function KycNewContent() {
             <div className="form-group">
               <label>Client Email</label>
               <input type="email" value={form.email} onChange={(e) => update('email', e.target.value)} required placeholder="client@company.com" />
+            </div>
+            <div className="form-group">
+              <label>CC Email <span style={{ color: 'var(--gray-400)', fontWeight: 400 }}>(optional)</span></label>
+              <input type="email" value={form.ccEmail} onChange={(e) => update('ccEmail', e.target.value)} placeholder="colleague@company.com" />
+              <p style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>
+                A copy of the invite email will be sent to this address.
+              </p>
             </div>
             {error && <p className="error-msg">{error}</p>}
             <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>

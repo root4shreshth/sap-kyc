@@ -1,8 +1,8 @@
 'use client';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { kycApi } from '@/lib/api-client';
-import { TABS, getDefaultFormData, getMockFormData } from './formSchema';
+import { getDefaultFormData, getMockFormData } from './formSchema';
 import {
   BusinessInfoSection, ProprietorsSection, CompanyDetailsSection,
   OwnershipSection, BankingSection, ReferencesSection,
@@ -19,8 +19,6 @@ function KycPortalContent({ token }) {
   const [success, setSuccess] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
   const [demoMode, setDemoMode] = useState(false);
-  const [activeSection, setActiveSection] = useState(0);
-  const sectionRefs = useRef([]);
 
   useEffect(() => {
     kycApi.portalValidate(token)
@@ -35,29 +33,6 @@ function KycPortalContent({ token }) {
       })
       .catch((e) => setError(e.message));
   }, [token]);
-
-  // Track which section is in view
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            const idx = sectionRefs.current.indexOf(entry.target);
-            if (idx !== -1) setActiveSection(idx);
-          }
-        }
-      },
-      { threshold: 0.3, rootMargin: '-80px 0px -50% 0px' }
-    );
-    sectionRefs.current.forEach((ref) => {
-      if (ref) observer.observe(ref);
-    });
-    return () => observer.disconnect();
-  }, [info]);
-
-  const scrollToSection = (index) => {
-    sectionRefs.current[index]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
 
   const update = useCallback((section, field, value) => {
     setFormData((prev) => {
@@ -261,47 +236,12 @@ function KycPortalContent({ token }) {
           </div>
         </div>
 
-        {/* Section Navigation - sticky */}
-        <div style={{
-          position: 'sticky', top: 0, zIndex: 10,
-          background: 'var(--gray-100)', padding: '8px 0', marginBottom: 8,
-        }}>
-          <div style={{
-            display: 'flex', gap: 4, overflowX: 'auto', padding: '4px 0',
-            scrollbarWidth: 'thin',
-          }}>
-            {SECTIONS.map((s, i) => (
-              <button
-                key={i}
-                onClick={() => scrollToSection(i)}
-                style={{
-                  padding: '6px 12px',
-                  fontSize: 12,
-                  fontWeight: activeSection === i ? 700 : 500,
-                  border: 'none',
-                  borderRadius: 20,
-                  background: activeSection === i ? 'var(--navy)' : 'white',
-                  color: activeSection === i ? 'white' : 'var(--gray-600)',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.2s ease',
-                  boxShadow: activeSection === i ? '0 2px 8px rgba(15,23,42,0.2)' : '0 1px 3px rgba(0,0,0,0.1)',
-                  flexShrink: 0,
-                }}
-              >
-                {i + 1}. {s.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* All sections on single page */}
         {SECTIONS.map((s, i) => (
           <div
             key={i}
-            ref={(el) => { sectionRefs.current[i] = el; }}
             className="card"
-            style={{ marginBottom: 16, scrollMarginTop: 60 }}
+            style={{ marginBottom: 16 }}
           >
             <h3 style={{
               fontSize: 15, fontWeight: 700, color: 'var(--navy)',

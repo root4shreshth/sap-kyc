@@ -5,7 +5,7 @@
  * Self-signed SSL certs are allowed (common in on-prem SAP installs).
  */
 
-const https = require('https');
+import https from 'https';
 
 // Allow self-signed certificates for on-prem SAP
 const agent = new https.Agent({ rejectUnauthorized: false });
