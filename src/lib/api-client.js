@@ -102,6 +102,13 @@ export const kycApi = {
       body: JSON.stringify({ checkKey, adminOverride, adminNotes }),
     }).then(handleResponse),
 
+  sapPush: (id, bpType) =>
+    fetch(`/api/kyc/${id}/sap-push`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ bpType }),
+    }).then(handleResponse),
+
   portalValidate: (token) =>
     fetch(`/api/kyc/portal/${token}`).then(handleResponse),
 

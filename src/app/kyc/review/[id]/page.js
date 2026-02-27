@@ -29,6 +29,11 @@ function KycReviewContent({ id }) {
   const [exporting, setExporting] = useState(false);
   const [pepStatus, setPepStatus] = useState('');
   const [pepDetails, setPepDetails] = useState('');
+  // SAP state
+  const [bpType, setBpType] = useState('');
+  const [sapPushing, setSapPushing] = useState(false);
+  const [sapMsg, setSapMsg] = useState('');
+  const [sapError, setSapError] = useState('');
 
   useEffect(() => {
     Promise.all([kycApi.list(), kycApi.getDocs(id), kycApi.getFormData(id)])
@@ -40,6 +45,7 @@ function KycReviewContent({ id }) {
           setRemarks(found.remarks || '');
           setPepStatus(found.pepStatus || '');
           setPepDetails(found.pepDetails || '');
+          if (found.sapBpType) setBpType(found.sapBpType);
         }
         setDocs(docList);
         if (fd && Object.keys(fd).length > 0) setFormData(fd);
@@ -50,6 +56,11 @@ function KycReviewContent({ id }) {
 
   async function handleStatusUpdate() {
     if (!status) return;
+    // If approving, require BP type selection
+    if (status === 'Approved' && !bpType) {
+      setError('Please select SAP Business Partner type (Customer/Vendor) before approving');
+      return;
+    }
     setError('');
     setUpdateMsg('');
     setUpdating(true);
@@ -57,11 +68,42 @@ function KycReviewContent({ id }) {
       const result = await kycApi.updateStatus(id, status, remarks, pepStatus, pepDetails);
       setUpdateMsg(result.message);
       setKycData((prev) => ({ ...prev, status, remarks, pepStatus, pepDetails }));
+
+      // If approved, auto-trigger SAP push
+      if (status === 'Approved') {
+        await handleSapPush();
+      }
+
       setStatus('');
     } catch (err) {
       setError(err.message);
     } finally {
       setUpdating(false);
+    }
+  }
+
+  async function handleSapPush() {
+    if (!bpType) {
+      setSapError('Select a Business Partner type first');
+      return;
+    }
+    setSapPushing(true);
+    setSapError('');
+    setSapMsg('');
+    try {
+      const result = await kycApi.sapPush(id, bpType);
+      setSapMsg(result.message);
+      setKycData((prev) => ({
+        ...prev,
+        sapCardCode: result.cardCode,
+        sapBpType: result.bpType,
+        sapSyncedAt: new Date().toISOString(),
+        sapSyncError: '',
+      }));
+    } catch (err) {
+      setSapError(err.message);
+    } finally {
+      setSapPushing(false);
     }
   }
 
@@ -167,10 +209,79 @@ function KycReviewContent({ id }) {
               {kycData.remarks && (
                 <div style={{ marginTop: 16, fontSize: 14 }}>
                   <span style={{ color: 'var(--gray-500)' }}>Remarks</span>
-                  <div style={{ fontWeight: 500, marginTop: 2 }}>{kycData.remarks}</div>
+                  <div style={{ fontWeight: 500, marginTop: 2, whiteSpace: 'pre-wrap' }}>{kycData.remarks}</div>
                 </div>
               )}
             </div>
+
+            {/* SAP Status Card */}
+            {(kycData.sapCardCode || kycData.sapSyncError) && (
+              <div className="card" style={{
+                marginBottom: 24,
+                border: kycData.sapCardCode ? '1px solid #16a34a' : '1px solid #dc2626',
+                background: kycData.sapCardCode ? '#f0fdf4' : '#fef2f2',
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <h3 style={{ fontSize: 16, margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 20 }}>{kycData.sapCardCode ? '✅' : '❌'}</span>
+                    SAP Integration
+                  </h3>
+                  {kycData.sapCardCode && (
+                    <span style={{
+                      padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+                      background: '#16a34a', color: 'white',
+                    }}>
+                      {kycData.sapCardCode}
+                    </span>
+                  )}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: 14 }}>
+                  {kycData.sapBpType && (
+                    <div>
+                      <span style={{ color: 'var(--gray-500)' }}>BP Type</span>
+                      <div style={{ fontWeight: 500, textTransform: 'capitalize' }}>{kycData.sapBpType}</div>
+                    </div>
+                  )}
+                  {kycData.sapSyncedAt && (
+                    <div>
+                      <span style={{ color: 'var(--gray-500)' }}>Synced At</span>
+                      <div style={{ fontWeight: 500 }}>{new Date(kycData.sapSyncedAt).toLocaleString()}</div>
+                    </div>
+                  )}
+                </div>
+                {kycData.sapSyncError && (
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ fontSize: 13, color: '#dc2626', fontWeight: 500, marginBottom: 8 }}>
+                      Error: {kycData.sapSyncError}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <select
+                        value={bpType}
+                        onChange={(e) => setBpType(e.target.value)}
+                        style={{ padding: '6px 10px', fontSize: 13, borderRadius: 6, border: '1px solid var(--gray-200)' }}
+                      >
+                        <option value="">Select BP Type...</option>
+                        <option value="customer">Customer</option>
+                        <option value="vendor">Vendor</option>
+                      </select>
+                      <button
+                        onClick={handleSapPush}
+                        disabled={sapPushing || !bpType}
+                        style={{
+                          padding: '6px 16px', fontSize: 13, fontWeight: 600,
+                          border: 'none', borderRadius: 6, cursor: 'pointer',
+                          background: '#2563eb', color: 'white',
+                        }}
+                      >
+                        {sapPushing ? 'Retrying...' : 'Retry SAP Push'}
+                      </button>
+                    </div>
+                    {sapMsg && <p style={{ color: '#16a34a', fontSize: 13, marginTop: 6 }}>{sapMsg}</p>}
+                    {sapError && <p style={{ color: '#dc2626', fontSize: 13, marginTop: 6 }}>{sapError}</p>}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Form Data */}
             {formData && (
@@ -235,6 +346,32 @@ function KycReviewContent({ id }) {
                     <option value="Rejected">Rejected</option>
                   </select>
                 </div>
+
+                {/* SAP BP Type — shown when approving */}
+                {status === 'Approved' && (
+                  <div style={{
+                    marginBottom: 12, padding: 16,
+                    background: 'linear-gradient(135deg, #eff6ff, #f0fdf4)',
+                    borderRadius: 'var(--radius)',
+                    border: '1px solid #93c5fd',
+                  }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#1e40af', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 16 }}>🔗</span> SAP Business Partner
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--gray-500)', marginBottom: 8 }}>
+                      This client will be created as a Business Partner in SAP B1 upon approval.
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 13 }}>Business Partner Type <span style={{ color: '#dc2626' }}>*</span></label>
+                      <select value={bpType} onChange={(e) => setBpType(e.target.value)}>
+                        <option value="">Select type...</option>
+                        <option value="customer">Customer</option>
+                        <option value="vendor">Vendor</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+
                 <div className="form-group">
                   <label>Remarks</label>
                   <textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} rows={3} placeholder="Optional remarks..." style={{ resize: 'vertical' }} />
@@ -268,8 +405,20 @@ function KycReviewContent({ id }) {
 
                 {error && <p className="error-msg">{error}</p>}
                 {updateMsg && <p className="success-msg">{updateMsg}</p>}
-                <button className="btn btn-primary" onClick={handleStatusUpdate} disabled={!status || updating} style={{ marginTop: 8 }}>
-                  {updating ? 'Updating...' : 'Update Status'}
+                {sapMsg && <p className="success-msg">{sapMsg}</p>}
+                {sapError && <p className="error-msg">SAP: {sapError}</p>}
+                <button
+                  className="btn btn-primary"
+                  onClick={handleStatusUpdate}
+                  disabled={!status || updating || sapPushing}
+                  style={{ marginTop: 8 }}
+                >
+                  {updating || sapPushing
+                    ? (sapPushing ? 'Pushing to SAP...' : 'Updating...')
+                    : status === 'Approved'
+                      ? 'Approve & Push to SAP'
+                      : 'Update Status'
+                  }
                 </button>
               </div>
             )}

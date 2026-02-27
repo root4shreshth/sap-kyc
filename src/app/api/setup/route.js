@@ -26,7 +26,11 @@ CREATE TABLE IF NOT EXISTS kyc (
   updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   form_data    JSONB DEFAULT '{}',
   pep_status   TEXT DEFAULT '',
-  pep_details  TEXT DEFAULT ''
+  pep_details  TEXT DEFAULT '',
+  sap_card_code  TEXT DEFAULT '',
+  sap_bp_type    TEXT DEFAULT '',
+  sap_synced_at  TIMESTAMPTZ,
+  sap_sync_error TEXT DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS kyc_docs (
