@@ -79,7 +79,7 @@ function KycReviewContent({ id }) {
   if (loading) {
     return (
       <ProtectedLayout roles={['Admin', 'KYC Team']}>
-        <div className="container" style={{ paddingTop: 32 }}>
+        <div style={{ padding: '32px 32px 48px' }}>
           <p style={{ color: 'var(--gray-400)' }}>Loading...</p>
         </div>
       </ProtectedLayout>
@@ -88,7 +88,7 @@ function KycReviewContent({ id }) {
 
   return (
     <ProtectedLayout roles={['Admin', 'KYC Team']}>
-      <div className="container" style={{ paddingTop: 32, maxWidth: 800 }}>
+      <div style={{ padding: '32px 32px 48px', maxWidth: 860 }}>
         <button className="btn btn-secondary" onClick={() => router.push('/kyc')} style={{ marginBottom: 16 }}>
           &larr; Back to List
         </button>

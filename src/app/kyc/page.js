@@ -18,26 +18,48 @@ function KycListContent() {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     kycApi.list().then(setRows).catch((e) => setError(e.message)).finally(() => setLoading(false));
   }, []);
 
+  const filtered = search
+    ? rows.filter((r) =>
+        r.clientName.toLowerCase().includes(search.toLowerCase()) ||
+        r.companyName.toLowerCase().includes(search.toLowerCase()) ||
+        r.email.toLowerCase().includes(search.toLowerCase())
+      )
+    : rows;
+
   return (
     <ProtectedLayout roles={['Admin', 'KYC Team']}>
-      <div className="container" style={{ paddingTop: 32 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-          <h1 style={{ fontSize: 24, fontWeight: 600 }}>KYC Requests</h1>
-          {user?.role === 'Admin' && (
-            <Link href="/kyc/new" className="btn btn-primary">+ New Request</Link>
-          )}
+      <div style={{ padding: '32px 32px 48px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: 'var(--navy)' }}>KYC Requests</h1>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search client, company, email..."
+              style={{
+                padding: '8px 12px', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius)',
+                fontSize: 13, width: 240,
+              }}
+            />
+            {user?.role === 'Admin' && (
+              <Link href="/kyc/new" className="btn btn-primary" style={{ padding: '8px 16px', fontSize: 13 }}>
+                + New Request
+              </Link>
+            )}
+          </div>
         </div>
         {error && <p className="error-msg">{error}</p>}
         {loading ? (
           <p style={{ color: 'var(--gray-400)' }}>Loading...</p>
-        ) : rows.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <div className="card" style={{ textAlign: 'center', color: 'var(--gray-400)', padding: 48 }}>
-            No KYC requests yet.
+            {search ? 'No matching requests.' : 'No KYC requests yet.'}
           </div>
         ) : (
           <div className="card" style={{ padding: 0, overflow: 'auto' }}>
@@ -48,13 +70,13 @@ function KycListContent() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {filtered.map((r) => (
                   <tr key={r.id}>
-                    <td>{r.clientName}</td>
+                    <td style={{ fontWeight: 500 }}>{r.clientName}</td>
                     <td>{r.companyName}</td>
-                    <td style={{ color: 'var(--gray-500)' }}>{r.email}</td>
+                    <td style={{ color: 'var(--gray-500)', fontSize: 13 }}>{r.email}</td>
                     <td>{statusBadge(r.status)}</td>
-                    <td style={{ color: 'var(--gray-500)' }}>{new Date(r.createdAt).toLocaleDateString()}</td>
+                    <td style={{ color: 'var(--gray-500)', fontSize: 13 }}>{new Date(r.createdAt).toLocaleDateString()}</td>
                     <td>
                       <Link href={`/kyc/review/${r.id}`} className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: 13 }}>
                         Review

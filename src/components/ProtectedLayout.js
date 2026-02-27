@@ -2,7 +2,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from './AuthProvider';
-import Navbar from './Navbar';
+import Sidebar from './Sidebar';
 
 export default function ProtectedLayout({ children, roles }) {
   const { user, loading, logout } = useAuth();
@@ -22,19 +22,23 @@ export default function ProtectedLayout({ children, roles }) {
 
   if (roles && !roles.includes(user.role)) {
     return (
-      <>
-        <Navbar user={user} onLogout={logout} />
-        <div className="container" style={{ paddingTop: 40, textAlign: 'center' }}>
-          <p className="error-msg">You do not have access to this page.</p>
-        </div>
-      </>
+      <div style={{ display: 'flex', minHeight: '100vh' }}>
+        <Sidebar user={user} onLogout={logout} />
+        <main style={{ flex: 1, overflow: 'auto' }}>
+          <div className="container" style={{ paddingTop: 40, textAlign: 'center' }}>
+            <p className="error-msg">You do not have access to this page.</p>
+          </div>
+        </main>
+      </div>
     );
   }
 
   return (
-    <>
-      <Navbar user={user} onLogout={logout} />
-      {children}
-    </>
+    <div style={{ display: 'flex', minHeight: '100vh' }}>
+      <Sidebar user={user} onLogout={logout} />
+      <main style={{ flex: 1, overflow: 'auto', background: 'var(--gray-50)' }}>
+        {children}
+      </main>
+    </div>
   );
 }

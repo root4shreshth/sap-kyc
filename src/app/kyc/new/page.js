@@ -35,7 +35,7 @@ function KycNewContent() {
   if (result) {
     return (
       <ProtectedLayout roles={['Admin']}>
-        <div className="container" style={{ paddingTop: 32, maxWidth: 600 }}>
+        <div style={{ padding: '32px 32px 48px', maxWidth: 600 }}>
           <div className="card" style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 48, color: 'var(--green)', marginBottom: 8 }}>&#10003;</div>
             <h2 style={{ marginBottom: 8 }}>KYC Request Created</h2>
