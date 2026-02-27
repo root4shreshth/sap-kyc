@@ -56,7 +56,7 @@ export async function getAllKyc() {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('kyc')
-    .select('id, client_name, company_name, email, status, remarks, pep_status, pep_details, sap_card_code, sap_bp_type, sap_synced_at, sap_sync_error, created_by, created_at, updated_at')
+    .select('*')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data || []).map(row => ({

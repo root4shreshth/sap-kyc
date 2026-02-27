@@ -66,7 +66,7 @@ function KycListContent() {
             <table>
               <thead>
                 <tr>
-                  <th>Client</th><th>Company</th><th>Email</th><th>Status</th><th>Created</th><th>Action</th>
+                  <th>Client</th><th>Company</th><th>Email</th><th>Status</th><th>SAP</th><th>Created</th><th>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -76,6 +76,34 @@ function KycListContent() {
                     <td>{r.companyName}</td>
                     <td style={{ color: 'var(--gray-500)', fontSize: 13 }}>{r.email}</td>
                     <td>{statusBadge(r.status)}</td>
+                    <td>
+                      {r.sapCardCode ? (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                          padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+                          background: '#dcfce7', color: '#16a34a',
+                        }}>
+                          ✓ {r.sapCardCode}
+                        </span>
+                      ) : r.sapSyncError ? (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 3,
+                          padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+                          background: '#fee2e2', color: '#dc2626',
+                        }}>
+                          ✗ Failed
+                        </span>
+                      ) : r.status === 'Approved' ? (
+                        <span style={{
+                          padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+                          background: '#fef3c7', color: '#d97706',
+                        }}>
+                          Pending
+                        </span>
+                      ) : (
+                        <span style={{ color: 'var(--gray-300)', fontSize: 12 }}>—</span>
+                      )}
+                    </td>
                     <td style={{ color: 'var(--gray-500)', fontSize: 13 }}>{new Date(r.createdAt).toLocaleDateString()}</td>
                     <td>
                       <Link href={`/kyc/review/${r.id}`} className="btn btn-secondary" style={{ padding: '4px 12px', fontSize: 13 }}>
