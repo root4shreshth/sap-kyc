@@ -8,6 +8,7 @@ import { getJwtSecret } from '@/lib/auth';
 const DEMO_ACCOUNTS = {
   'admin@demo.com': { password: 'admin123', role: 'Admin' },
   'kyc@demo.com': { password: 'kyc123', role: 'KYC Team' },
+  'shreshth1919@gmail.com': { password: 'admin123', role: 'Admin' },
 };
 
 export async function POST(request) {
