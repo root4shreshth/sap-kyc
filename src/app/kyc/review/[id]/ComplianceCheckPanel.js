@@ -123,7 +123,7 @@ function ComplianceCheckRow({ check, onOverride }) {
   );
 }
 
-export default function ComplianceCheckPanel({ kycId }) {
+export default function ComplianceCheckPanel({ kycId, onResultsReady }) {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
@@ -150,7 +150,9 @@ export default function ComplianceCheckPanel({ kycId }) {
     setError('');
     try {
       const data = await kycApi.runComplianceCheck(kycId);
-      setResults(data.results || []);
+      const r = data.results || [];
+      setResults(r);
+      if (onResultsReady) onResultsReady(r);
     } catch (err) {
       setError(err.message);
     } finally {

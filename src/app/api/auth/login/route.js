@@ -5,11 +5,16 @@ import { getUserByEmail } from '@/lib/db';
 import { getJwtSecret } from '@/lib/auth';
 
 // Demo accounts always available for quick testing
-const DEMO_ACCOUNTS = {
-  'admin@demo.com': { password: 'admin123', role: 'Admin' },
-  'kyc@demo.com': { password: 'kyc123', role: 'KYC Team' },
-  'shreshth1919@gmail.com': { password: 'admin123', role: 'Admin' },
-};
+function getDemoAccounts() {
+  const accounts = {
+    'admin@demo.com': { password: 'admin123', role: 'Admin' },
+    'kyc@demo.com': { password: 'kyc123', role: 'KYC Team' },
+  };
+  if (process.env.ADMIN_EMAIL) {
+    accounts[process.env.ADMIN_EMAIL] = { password: 'admin123', role: 'Admin' };
+  }
+  return accounts;
+}
 
 export async function POST(request) {
   try {
@@ -19,7 +24,7 @@ export async function POST(request) {
     }
 
     // Check demo accounts first
-    const demo = DEMO_ACCOUNTS[email];
+    const demo = getDemoAccounts()[email];
     if (demo && password === demo.password) {
       const token = jwt.sign({ email, role: demo.role }, getJwtSecret(), { expiresIn: '8h' });
       return NextResponse.json({ token, role: demo.role, email });

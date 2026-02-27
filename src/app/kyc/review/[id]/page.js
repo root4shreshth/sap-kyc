@@ -76,6 +76,42 @@ function KycReviewContent({ id }) {
     }
   }
 
+  function generateRemarksFromCompliance(results) {
+    if (!results || results.length === 0) return;
+    const summary = { pass: 0, fail: 0, warning: 0, not_applicable: 0 };
+    const fails = [];
+    const warnings = [];
+    results.forEach(r => {
+      const s = r.adminOverride || r.aiStatus;
+      summary[s] = (summary[s] || 0) + 1;
+      if (s === 'fail') fails.push(r);
+      if (s === 'warning') warnings.push(r);
+    });
+    const lines = ['--- AI COMPLIANCE SUMMARY ---'];
+    lines.push(`Pass: ${summary.pass} | Warning: ${summary.warning} | Fail: ${summary.fail} | N/A: ${summary.not_applicable || 0}`);
+    if (fails.length > 0) {
+      lines.push('');
+      lines.push('FAILURES:');
+      fails.forEach(f => {
+        lines.push(`- ${f.label}: ${f.aiRemarks || 'No details'}`);
+      });
+    }
+    if (warnings.length > 0) {
+      lines.push('');
+      lines.push('WARNINGS:');
+      warnings.forEach(w => {
+        lines.push(`- ${w.label}: ${w.aiRemarks || 'No details'}`);
+      });
+    }
+    if (fails.length === 0 && warnings.length === 0) {
+      lines.push('');
+      lines.push('All checks passed. No issues detected.');
+    }
+    lines.push('');
+    lines.push('--- End of AI Report ---');
+    setRemarks(lines.join('\n'));
+  }
+
   if (loading) {
     return (
       <ProtectedLayout roles={['Admin', 'KYC Team']}>
@@ -182,7 +218,7 @@ function KycReviewContent({ id }) {
             {/* AI Compliance Check */}
             {formData && (
               <div className="card" style={{ marginBottom: 24 }}>
-                <ComplianceCheckPanel kycId={id} />
+                <ComplianceCheckPanel kycId={id} onResultsReady={generateRemarksFromCompliance} />
               </div>
             )}
 
