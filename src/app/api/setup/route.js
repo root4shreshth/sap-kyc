@@ -299,6 +299,18 @@ CREATE TABLE IF NOT EXISTS message_log (
 );
 `;
 
+// Migration statements for existing tables that may need new columns
+const MIGRATION_STATEMENTS = [
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE",
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS can_send_kyc BOOLEAN DEFAULT FALSE",
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_by_admin TEXT DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ",
+  "ALTER TABLE kyc ADD COLUMN IF NOT EXISTS company_profile_id UUID",
+  "ALTER TABLE kyc ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT ''",
+  "ALTER TABLE kyc ADD COLUMN IF NOT EXISTS phone_country_code TEXT DEFAULT ''",
+];
+
 const ALL_TABLES = [
   'users', 'company_profiles', 'kyc', 'kyc_docs', 'audit_log', 'message_log',
   'kyc_form', 'kyc_proprietors', 'kyc_ownership_management',
@@ -336,8 +348,16 @@ export async function POST() {
           tables: results.tables,
           storage: results.storage,
           sql: SCHEMA_SQL,
+          migrationSql: MIGRATION_STATEMENTS.join(';\n') + ';',
         });
       }
+    }
+
+    // Run migration statements (add columns to existing tables)
+    results.migrations = [];
+    for (const stmt of MIGRATION_STATEMENTS) {
+      const { error: migErr } = await supabase.rpc('exec_sql', { query: stmt });
+      results.migrations.push({ sql: stmt.slice(0, 60) + '...', status: migErr ? `skipped: ${migErr.message}` : 'ok' });
     }
 
     // Ensure storage bucket exists

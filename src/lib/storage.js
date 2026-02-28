@@ -59,6 +59,37 @@ export async function getFileMetadata(storagePath) {
 }
 
 /**
+ * Upload a company logo to Supabase Storage.
+ * Returns { storagePath, fileName }.
+ */
+export async function uploadLogo(buffer, fileName, mimeType, profileId) {
+  const supabase = getSupabase();
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const storagePath = `logos/${profileId}_${Date.now()}_${safeName}`;
+
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .upload(storagePath, buffer, {
+      contentType: mimeType,
+      upsert: true,
+    });
+
+  if (error) throw error;
+  return { storagePath, fileName };
+}
+
+/**
+ * Get a public URL for a file in Supabase Storage.
+ */
+export function getPublicUrl(storagePath) {
+  const supabase = getSupabase();
+  const { data } = supabase.storage
+    .from(BUCKET)
+    .getPublicUrl(storagePath);
+  return data?.publicUrl || '';
+}
+
+/**
  * Ensure the storage bucket exists. Called from setup route.
  */
 export async function ensureBucket() {

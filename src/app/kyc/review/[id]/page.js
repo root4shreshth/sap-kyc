@@ -124,7 +124,7 @@ function KycReviewContent({ id }) {
     setSendingReminder(true);
     setReminderMsg('');
     try {
-      const result = await kycApi.sendReminders(7);
+      const result = await kycApi.sendReminder(id);
       setReminderMsg(result.message || 'Reminder sent');
     } catch (err) {
       setReminderMsg('Failed: ' + err.message);
@@ -221,7 +221,7 @@ function KycReviewContent({ id }) {
                   <div style={{ fontWeight: 500 }}>{new Date(kycData.createdAt).toLocaleString()}</div>
                 </div>
               </div>
-              {kycData.status === 'Pending' && (
+              {['Pending', 'Submitted'].includes(kycData.status) && (
                 <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
                   <button
                     className="btn btn-secondary"

@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AuthProvider } from '@/components/AuthProvider';
 import ProtectedLayout from '@/components/ProtectedLayout';
 import { companyApi } from '@/lib/api-client';
@@ -16,6 +16,8 @@ function CompanyProfilesContent() {
   const [editing, setEditing] = useState(null); // null = list view, 'new' = create, id = edit
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const logoInputRef = useRef(null);
 
   useEffect(() => { loadProfiles(); }, []);
 
@@ -59,10 +61,24 @@ function CompanyProfilesContent() {
     setSaving(true);
     setError('');
     try {
+      const submitData = { ...form };
+      const pendingFile = form._logoFile;
+      delete submitData._logoFile;
+      // Don't send data URL as logoUrl
+      if (submitData.logoUrl?.startsWith('data:')) submitData.logoUrl = '';
+
       if (editing === 'new') {
-        await companyApi.create(form);
+        const created = await companyApi.create(submitData);
+        // Upload logo after profile is created (need the ID)
+        if (pendingFile && created.id) {
+          try {
+            const uploadResult = await companyApi.uploadLogo(created.id, pendingFile);
+            // Update the profile with the logo URL
+            await companyApi.update(created.id, { logoUrl: uploadResult.logoUrl });
+          } catch {}
+        }
       } else {
-        await companyApi.update(editing, form);
+        await companyApi.update(editing, submitData);
       }
       setEditing(null);
       await loadProfiles();
@@ -75,6 +91,40 @@ function CompanyProfilesContent() {
 
   function set(field, value) {
     setForm(f => ({ ...f, [field]: value }));
+  }
+
+  async function handleLogoUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml'].includes(file.type)) {
+      setError('Only JPEG, PNG, WebP, or SVG images allowed');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Logo must be under 5MB');
+      return;
+    }
+
+    // For new profiles, need to create first to get an ID
+    if (editing === 'new') {
+      // Just preview locally, will upload after save
+      const reader = new FileReader();
+      reader.onload = (ev) => set('logoUrl', ev.target.result);
+      reader.readAsDataURL(file);
+      set('_logoFile', file);
+      return;
+    }
+
+    setUploading(true);
+    setError('');
+    try {
+      const result = await companyApi.uploadLogo(editing, file);
+      set('logoUrl', result.logoUrl);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setUploading(false);
+    }
   }
 
   // Edit / Create form
@@ -102,9 +152,42 @@ function CompanyProfilesContent() {
                 </div>
               </div>
               <div className="form-group">
-                <label>Logo URL</label>
-                <input value={form.logoUrl} onChange={e => set('logoUrl', e.target.value)} placeholder="https://example.com/logo.png" />
-                <p style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>Used in the client portal header.</p>
+                <label>Company Logo</label>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
+                  {form.logoUrl && (
+                    <img
+                      src={form.logoUrl}
+                      alt="Logo preview"
+                      style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: 6, border: '1px solid var(--gray-200)', background: 'white' }}
+                      onError={(e) => { e.target.style.display = 'none'; }}
+                    />
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/svg+xml"
+                      onChange={handleLogoUpload}
+                      style={{ display: 'none' }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '6px 14px', fontSize: 13 }}
+                      onClick={() => logoInputRef.current?.click()}
+                      disabled={uploading}
+                    >
+                      {uploading ? 'Uploading...' : form.logoUrl ? 'Change Logo' : 'Upload Logo'}
+                    </button>
+                  </div>
+                </div>
+                <input
+                  value={form.logoUrl?.startsWith('data:') ? '' : form.logoUrl || ''}
+                  onChange={e => set('logoUrl', e.target.value)}
+                  placeholder="Or paste a URL: https://example.com/logo.png"
+                  style={{ fontSize: 13 }}
+                />
+                <p style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>Upload an image or paste a URL. Used in the client portal header.</p>
               </div>
               <div className="form-group">
                 <label>Address</label>
