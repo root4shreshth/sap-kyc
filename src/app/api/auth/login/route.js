@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { getUserByEmail } from '@/lib/db';
+import { getUserByEmail, updateUser } from '@/lib/db';
 import { getJwtSecret } from '@/lib/auth';
 
 // Demo accounts always available for quick testing
@@ -36,13 +36,20 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
+    if (user.is_active === false) {
+      return NextResponse.json({ error: 'Account deactivated. Contact admin.' }, { status: 403 });
+    }
+
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
 
+    // Update last login timestamp
+    updateUser(user.id, { lastLoginAt: new Date().toISOString() }).catch(() => {});
+
     const token = jwt.sign({ email: user.email, role: user.role }, getJwtSecret(), { expiresIn: '8h' });
-    return NextResponse.json({ token, role: user.role, email: user.email });
+    return NextResponse.json({ token, role: user.role, email: user.email, name: user.name || '' });
   } catch (err) {
     console.error('Login error:', err);
     return NextResponse.json({ error: 'Login failed' }, { status: 500 });

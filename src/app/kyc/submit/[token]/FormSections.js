@@ -1,32 +1,55 @@
 'use client';
 
 // Reusable field components
-function Field({ label, value, onChange, type = 'text', placeholder = '', style = {} }) {
+function Field({ label, value, onChange, type = 'text', placeholder = '', style = {}, required = false, error = '' }) {
   return (
     <div className="form-group" style={{ marginBottom: 12, ...style }}>
-      <label style={{ fontSize: 13, color: 'var(--gray-600)' }}>{label}</label>
+      <label style={{ fontSize: 13, color: 'var(--gray-600)' }}>
+        {label}
+        {required && <span style={{ color: 'var(--red)', marginLeft: 2 }}>*</span>}
+      </label>
       <input type={type} value={value || ''} onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder} style={{ fontSize: 14 }} />
+        placeholder={placeholder}
+        style={{
+          fontSize: 14,
+          ...(error ? { borderColor: 'var(--red)', boxShadow: '0 0 0 3px rgba(220, 38, 38, 0.1)' } : {}),
+        }} />
+      {error && <p style={{ color: 'var(--red)', fontSize: 12, marginTop: 4 }}>{error}</p>}
     </div>
   );
 }
 
-function TextArea({ label, value, onChange, rows = 2 }) {
+function TextArea({ label, value, onChange, rows = 2, required = false, error = '' }) {
   return (
     <div className="form-group" style={{ marginBottom: 12 }}>
-      <label style={{ fontSize: 13, color: 'var(--gray-600)' }}>{label}</label>
+      <label style={{ fontSize: 13, color: 'var(--gray-600)' }}>
+        {label}
+        {required && <span style={{ color: 'var(--red)', marginLeft: 2 }}>*</span>}
+      </label>
       <textarea value={value || ''} onChange={(e) => onChange(e.target.value)}
-        rows={rows} style={{ fontSize: 14, resize: 'vertical' }} />
+        rows={rows}
+        style={{
+          fontSize: 14, resize: 'vertical',
+          ...(error ? { borderColor: 'var(--red)', boxShadow: '0 0 0 3px rgba(220, 38, 38, 0.1)' } : {}),
+        }} />
+      {error && <p style={{ color: 'var(--red)', fontSize: 12, marginTop: 4 }}>{error}</p>}
     </div>
   );
 }
 
-function Checkbox({ label, checked, onChange }) {
+function Checkbox({ label, checked, onChange, required = false, error = '' }) {
   return (
-    <label className="checkbox-item">
-      <input type="checkbox" checked={checked || false} onChange={(e) => onChange(e.target.checked)} />
-      <span>{label}</span>
-    </label>
+    <div>
+      <label className="checkbox-item" style={error ? { color: 'var(--red)' } : {}}>
+        <input type="checkbox" checked={checked || false} onChange={(e) => onChange(e.target.checked)}
+          style={error ? { accentColor: 'var(--red)' } : {}} />
+        <span>
+          {label}
+          {required && <span style={{ color: 'var(--red)', marginLeft: 2 }}>*</span>}
+        </span>
+      </label>
+      {error && <p style={{ color: 'var(--red)', fontSize: 11, marginTop: 2, marginLeft: 24 }}>{error}</p>}
+    </div>
   );
 }
 
@@ -35,28 +58,29 @@ function SectionTitle({ children }) {
 }
 
 // ==================== SECTION 1: Business Information ====================
-export function BusinessInfoSection({ data, update }) {
+export function BusinessInfoSection({ data, update, errors = {} }) {
   const d = data.businessInfo || {};
   const bt = d.businessType || {};
   const set = (field, val) => update('businessInfo', field, val);
   const setBt = (field, val) => update('businessInfo.businessType', field, val);
+  const e = (field) => errors[`businessInfo.${field}`] || '';
 
   return (
     <div>
       <SectionTitle>Business Information</SectionTitle>
       <div className="form-grid-2">
-        <Field label="Business Name" value={d.businessName} onChange={(v) => set('businessName', v)} />
+        <Field label="Business Name" value={d.businessName} onChange={(v) => set('businessName', v)} required error={e('businessName')} />
         <Field label="Tax Registration No." value={d.taxRegistrationNo} onChange={(v) => set('taxRegistrationNo', v)} />
       </div>
-      <Field label="Address" value={d.address} onChange={(v) => set('address', v)} />
+      <Field label="Address" value={d.address} onChange={(v) => set('address', v)} required error={e('address')} />
       <div className="form-grid-3">
-        <Field label="City" value={d.city} onChange={(v) => set('city', v)} />
+        <Field label="City" value={d.city} onChange={(v) => set('city', v)} required error={e('city')} />
         <Field label="Province / State" value={d.provinceState} onChange={(v) => set('provinceState', v)} />
         <Field label="Postal / Zip Code" value={d.postalZipCode} onChange={(v) => set('postalZipCode', v)} />
       </div>
       <div className="form-grid-3">
-        <Field label="Country" value={d.country} onChange={(v) => set('country', v)} />
-        <Field label="Phone" value={d.phone} onChange={(v) => set('phone', v)} type="tel" />
+        <Field label="Country" value={d.country} onChange={(v) => set('country', v)} required error={e('country')} />
+        <Field label="Phone" value={d.phone} onChange={(v) => set('phone', v)} type="tel" required error={e('phone')} />
         <Field label="Website" value={d.website} onChange={(v) => set('website', v)} />
       </div>
 
@@ -87,24 +111,28 @@ export function BusinessInfoSection({ data, update }) {
 }
 
 // ==================== SECTION 2: Proprietors & Management ====================
-export function ProprietorsSection({ data, update, updateArray }) {
+export function ProprietorsSection({ data, update, updateArray, errors = {} }) {
   const props = data.proprietors || [];
   const mgr = data.managerInfo || {};
   const setMgr = (field, val) => update('managerInfo', field, val);
+  const em = (field) => errors[`managerInfo.${field}`] || '';
 
   return (
     <div>
       <SectionTitle>Proprietor(s) / Owner(s)</SectionTitle>
+      {errors['proprietors._min'] && (
+        <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>{errors['proprietors._min']}</p>
+      )}
       {props.map((p, i) => (
         <div key={i} className="dynamic-row">
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginBottom: 8 }}>Proprietor {i + 1}</div>
           <div className="form-grid-2">
-            <Field label="Name" value={p.name} onChange={(v) => updateArray('proprietors', i, 'name', v)} />
+            <Field label="Name" value={p.name} onChange={(v) => updateArray('proprietors', i, 'name', v)} required error={errors[`proprietors.${i}.name`] || ''} />
             <Field label="Title / Position" value={p.title} onChange={(v) => updateArray('proprietors', i, 'title', v)} />
           </div>
           <Field label="Address" value={p.address} onChange={(v) => updateArray('proprietors', i, 'address', v)} />
           <div className="form-grid-3">
-            <Field label="Email" value={p.email} onChange={(v) => updateArray('proprietors', i, 'email', v)} type="email" />
+            <Field label="Email" value={p.email} onChange={(v) => updateArray('proprietors', i, 'email', v)} type="email" required error={errors[`proprietors.${i}.email`] || ''} />
             <Field label="Phone" value={p.phone} onChange={(v) => updateArray('proprietors', i, 'phone', v)} type="tel" />
             <Field label="Mobile" value={p.mobile} onChange={(v) => updateArray('proprietors', i, 'mobile', v)} type="tel" />
           </div>
@@ -113,11 +141,11 @@ export function ProprietorsSection({ data, update, updateArray }) {
 
       <SectionTitle>Manager & Accounts Payable Contact</SectionTitle>
       <div className="form-grid-2">
-        <Field label="Manager Name" value={mgr.managerName} onChange={(v) => setMgr('managerName', v)} />
-        <Field label="Manager Email" value={mgr.managerEmail} onChange={(v) => setMgr('managerEmail', v)} type="email" />
+        <Field label="Manager Name" value={mgr.managerName} onChange={(v) => setMgr('managerName', v)} required error={em('managerName')} />
+        <Field label="Manager Email" value={mgr.managerEmail} onChange={(v) => setMgr('managerEmail', v)} type="email" required error={em('managerEmail')} />
       </div>
       <div className="form-grid-2">
-        <Field label="Manager Phone" value={mgr.managerPhone} onChange={(v) => setMgr('managerPhone', v)} type="tel" />
+        <Field label="Manager Phone" value={mgr.managerPhone} onChange={(v) => setMgr('managerPhone', v)} type="tel" required error={em('managerPhone')} />
         <Field label="Manager Mobile" value={mgr.managerMobile} onChange={(v) => setMgr('managerMobile', v)} type="tel" />
       </div>
       <div className="form-grid-2">
@@ -133,26 +161,27 @@ export function ProprietorsSection({ data, update, updateArray }) {
 }
 
 // ==================== SECTION 3: Company Details (UAE) ====================
-export function CompanyDetailsSection({ data, update, updateArray, addRow, removeRow }) {
+export function CompanyDetailsSection({ data, update, updateArray, addRow, removeRow, errors = {} }) {
   const d = data.companyDetails || {};
   const set = (field, val) => update('companyDetails', field, val);
   const warehouses = data.warehouseAddresses || [];
   const agent = d.borderAgent || {};
   const setAgent = (field, val) => update('companyDetails.borderAgent', field, val);
+  const e = (field) => errors[`companyDetails.${field}`] || '';
 
   return (
     <div>
       <SectionTitle>Company Information (UAE)</SectionTitle>
-      <Field label="Company Name (as per Trade License)" value={d.companyName} onChange={(v) => set('companyName', v)} />
+      <Field label="Company Name (as per Trade License)" value={d.companyName} onChange={(v) => set('companyName', v)} required error={e('companyName')} />
       <div className="form-grid-2">
-        <Field label="Trade License No." value={d.tradeLicenseNo} onChange={(v) => set('tradeLicenseNo', v)} />
+        <Field label="Trade License No." value={d.tradeLicenseNo} onChange={(v) => set('tradeLicenseNo', v)} required error={e('tradeLicenseNo')} />
         <Field label="Trade License Expiry Date" value={d.tradeLicenseExpiry} onChange={(v) => set('tradeLicenseExpiry', v)} type="date" />
       </div>
       <div className="form-grid-2">
         <Field label="MQA / Registration No." value={d.mqaRegistrationNo} onChange={(v) => set('mqaRegistrationNo', v)} />
         <Field label="VAT Registration No." value={d.vatRegistrationNo} onChange={(v) => set('vatRegistrationNo', v)} />
       </div>
-      <Field label="Company Address" value={d.companyAddress} onChange={(v) => set('companyAddress', v)} />
+      <Field label="Company Address" value={d.companyAddress} onChange={(v) => set('companyAddress', v)} required error={e('companyAddress')} />
       <div className="form-grid-3">
         <Field label="Office Phone" value={d.officePhone} onChange={(v) => set('officePhone', v)} type="tel" />
         <Field label="Email" value={d.email} onChange={(v) => set('email', v)} type="email" />
@@ -187,12 +216,15 @@ export function CompanyDetailsSection({ data, update, updateArray, addRow, remov
 }
 
 // ==================== SECTION 4: Ownership & Management ====================
-export function OwnershipSection({ data, addRow, removeRow, updateArray }) {
+export function OwnershipSection({ data, addRow, removeRow, updateArray, errors = {} }) {
   const rows = data.ownershipManagement || [];
 
   return (
     <div>
       <SectionTitle>Ownership & Management Details</SectionTitle>
+      {errors['ownershipManagement._min'] && (
+        <p style={{ color: 'var(--red)', fontSize: 13, marginBottom: 12 }}>{errors['ownershipManagement._min']}</p>
+      )}
       {rows.map((r, i) => (
         <div key={i} className="dynamic-row">
           {rows.length > 1 && (
@@ -200,9 +232,9 @@ export function OwnershipSection({ data, addRow, removeRow, updateArray }) {
           )}
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)', marginBottom: 8 }}>Owner / Manager {i + 1}</div>
           <div className="form-grid-3">
-            <Field label="Name" value={r.name} onChange={(v) => updateArray('ownershipManagement', i, 'name', v)} />
-            <Field label="Designation" value={r.designation} onChange={(v) => updateArray('ownershipManagement', i, 'designation', v)} />
-            <Field label="Nationality" value={r.nationality} onChange={(v) => updateArray('ownershipManagement', i, 'nationality', v)} />
+            <Field label="Name" value={r.name} onChange={(v) => updateArray('ownershipManagement', i, 'name', v)} required error={errors[`ownershipManagement.${i}.name`] || ''} />
+            <Field label="Designation" value={r.designation} onChange={(v) => updateArray('ownershipManagement', i, 'designation', v)} required error={errors[`ownershipManagement.${i}.designation`] || ''} />
+            <Field label="Nationality" value={r.nationality} onChange={(v) => updateArray('ownershipManagement', i, 'nationality', v)} required error={errors[`ownershipManagement.${i}.nationality`] || ''} />
           </div>
           <div className="form-grid-3">
             <Field label="UAE ID" value={r.uaeId} onChange={(v) => updateArray('ownershipManagement', i, 'uaeId', v)} />
@@ -225,19 +257,20 @@ export function OwnershipSection({ data, addRow, removeRow, updateArray }) {
 }
 
 // ==================== SECTION 5: Banking & Financial ====================
-export function BankingSection({ data, update, addRow, removeRow, updateArray }) {
+export function BankingSection({ data, update, addRow, removeRow, updateArray, errors = {} }) {
   const br = data.bankReference || {};
   const checks = data.bankingChecks || [];
   const setBr = (field, val) => update('bankReference', field, val);
+  const e = (field) => errors[`bankReference.${field}`] || '';
 
   return (
     <div>
       <SectionTitle>Bank Reference</SectionTitle>
       <div className="form-grid-2">
-        <Field label="Principal Bank Name" value={br.bankName} onChange={(v) => setBr('bankName', v)} />
-        <Field label="Contact Name" value={br.contactName} onChange={(v) => setBr('contactName', v)} />
+        <Field label="Principal Bank Name" value={br.bankName} onChange={(v) => setBr('bankName', v)} required error={e('bankName')} />
+        <Field label="Contact Name" value={br.contactName} onChange={(v) => setBr('contactName', v)} required error={e('contactName')} />
       </div>
-      <Field label="Bank Address" value={br.address} onChange={(v) => setBr('address', v)} />
+      <Field label="Bank Address" value={br.address} onChange={(v) => setBr('address', v)} required error={e('address')} />
       <div className="form-grid-3">
         <Field label="City" value={br.city} onChange={(v) => setBr('city', v)} />
         <Field label="Province / State" value={br.provinceState} onChange={(v) => setBr('provinceState', v)} />
@@ -448,9 +481,10 @@ export function ComplianceSection({ data, updateArray, addRow, removeRow, update
 }
 
 // ==================== SECTION 8: Declaration & Documents ====================
-export function DeclarationSection({ data, update, files, setFiles }) {
+export function DeclarationSection({ data, update, files, setFiles, errors = {} }) {
   const decl = data.declaration || {};
   const setDecl = (field, val) => update('declaration', field, val);
+  const e = (field) => errors[`declaration.${field}`] || '';
 
   const DOC_TYPES = [
     'Certificate of Incorporation / Trade License',
@@ -480,23 +514,23 @@ export function DeclarationSection({ data, update, files, setFiles }) {
       <div style={{ background: 'var(--gray-50)', padding: 16, borderRadius: 'var(--radius)', marginBottom: 20 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Checkbox label="I/We declare that all information provided is true and accurate."
-            checked={decl.infoAccurate} onChange={(v) => setDecl('infoAccurate', v)} />
+            checked={decl.infoAccurate} onChange={(v) => setDecl('infoAccurate', v)} required error={e('infoAccurate')} />
           <Checkbox label="I/We authorize verification of social media, bank references, and regulatory compliance."
-            checked={decl.authorizeVerification} onChange={(v) => setDecl('authorizeVerification', v)} />
+            checked={decl.authorizeVerification} onChange={(v) => setDecl('authorizeVerification', v)} required error={e('authorizeVerification')} />
           <Checkbox label="I/We declare that we are not involved in any money laundering activities."
-            checked={decl.notMoneyLaundering} onChange={(v) => setDecl('notMoneyLaundering', v)} />
+            checked={decl.notMoneyLaundering} onChange={(v) => setDecl('notMoneyLaundering', v)} required error={e('notMoneyLaundering')} />
           <Checkbox label="I/We declare that we are not involved in any terrorist funding activities."
-            checked={decl.notTerroristFunding} onChange={(v) => setDecl('notTerroristFunding', v)} />
+            checked={decl.notTerroristFunding} onChange={(v) => setDecl('notTerroristFunding', v)} required error={e('notTerroristFunding')} />
           <Checkbox label="I/We declare that we are not dealing with any UN/US/EU/GCC sanctioned country."
-            checked={decl.notSanctionedCountry} onChange={(v) => setDecl('notSanctionedCountry', v)} />
+            checked={decl.notSanctionedCountry} onChange={(v) => setDecl('notSanctionedCountry', v)} required error={e('notSanctionedCountry')} />
           <Checkbox label="I/We declare that we are not related to any Political party."
-            checked={decl.notPoliticalParty} onChange={(v) => setDecl('notPoliticalParty', v)} />
+            checked={decl.notPoliticalParty} onChange={(v) => setDecl('notPoliticalParty', v)} required error={e('notPoliticalParty')} />
         </div>
       </div>
       <div className="form-grid-3">
-        <Field label="Signature (Full Name)" value={decl.signatureName} onChange={(v) => setDecl('signatureName', v)} />
-        <Field label="Position / Title" value={decl.signaturePosition} onChange={(v) => setDecl('signaturePosition', v)} />
-        <Field label="Date" value={decl.signatureDate} onChange={(v) => setDecl('signatureDate', v)} type="date" />
+        <Field label="Signature (Full Name)" value={decl.signatureName} onChange={(v) => setDecl('signatureName', v)} required error={e('signatureName')} />
+        <Field label="Position / Title" value={decl.signaturePosition} onChange={(v) => setDecl('signaturePosition', v)} required error={e('signaturePosition')} />
+        <Field label="Date" value={decl.signatureDate} onChange={(v) => setDecl('signatureDate', v)} type="date" required error={e('signatureDate')} />
       </div>
 
       <SectionTitle>Upload Supporting Documents</SectionTitle>

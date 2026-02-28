@@ -19,18 +19,28 @@ function KycListContent() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [createdByFilter, setCreatedByFilter] = useState('');
 
   useEffect(() => {
     kycApi.list().then(setRows).catch((e) => setError(e.message)).finally(() => setLoading(false));
   }, []);
 
-  const filtered = search
-    ? rows.filter((r) =>
-        r.clientName.toLowerCase().includes(search.toLowerCase()) ||
-        r.companyName.toLowerCase().includes(search.toLowerCase()) ||
-        r.email.toLowerCase().includes(search.toLowerCase())
-      )
-    : rows;
+  const creators = [...new Set(rows.map(r => r.createdBy).filter(Boolean))];
+  const filtered = rows.filter(r => {
+    if (search) {
+      const q = search.toLowerCase();
+      if (!r.clientName.toLowerCase().includes(q) && !r.companyName.toLowerCase().includes(q) && !r.email.toLowerCase().includes(q)) return false;
+    }
+    if (statusFilter && r.status !== statusFilter) return false;
+    if (createdByFilter && r.createdBy !== createdByFilter) return false;
+    if (dateFrom && new Date(r.createdAt) < new Date(dateFrom)) return false;
+    if (dateTo && new Date(r.createdAt) > new Date(dateTo + 'T23:59:59')) return false;
+    return true;
+  });
+  const hasFilters = statusFilter || createdByFilter || dateFrom || dateTo;
 
   return (
     <ProtectedLayout roles={['Admin', 'KYC Team']}>
@@ -54,6 +64,38 @@ function KycListContent() {
             )}
           </div>
         </div>
+        {/* Filters */}
+        <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            style={{ padding: '6px 10px', border: '1px solid var(--gray-200)', borderRadius: 6, fontSize: 13 }}>
+            <option value="">All statuses</option>
+            {['Pending', 'Submitted', 'Under Review', 'Approved', 'Rejected'].map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            <span style={{ color: 'var(--gray-500)' }}>From:</span>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              style={{ padding: '6px 10px', border: '1px solid var(--gray-200)', borderRadius: 6, fontSize: 13 }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            <span style={{ color: 'var(--gray-500)' }}>To:</span>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              style={{ padding: '6px 10px', border: '1px solid var(--gray-200)', borderRadius: 6, fontSize: 13 }} />
+          </div>
+          {creators.length > 1 && (
+            <select value={createdByFilter} onChange={e => setCreatedByFilter(e.target.value)}
+              style={{ padding: '6px 10px', border: '1px solid var(--gray-200)', borderRadius: 6, fontSize: 13 }}>
+              <option value="">All team members</option>
+              {creators.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
+          {hasFilters && (
+            <button onClick={() => { setStatusFilter(''); setCreatedByFilter(''); setDateFrom(''); setDateTo(''); }}
+              style={{ padding: '6px 12px', fontSize: 12, border: '1px solid var(--gray-200)', borderRadius: 6, background: 'var(--gray-100)', cursor: 'pointer', color: 'var(--gray-500)' }}>
+              Clear filters
+            </button>
+          )}
+        </div>
+
         {error && <p className="error-msg">{error}</p>}
         {loading ? (
           <p style={{ color: 'var(--gray-400)' }}>Loading...</p>

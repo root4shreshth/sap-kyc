@@ -23,7 +23,7 @@ export function AuthProvider({ children }) {
 
   function login(token, userData) {
     localStorage.setItem('token', token);
-    setUser(userData);
+    setUser({ ...userData, name: userData.name || '', canSendKyc: userData.canSendKyc || false });
   }
 
   function logout() {

@@ -34,6 +34,8 @@ function KycReviewContent({ id }) {
   const [sapPushing, setSapPushing] = useState(false);
   const [sapMsg, setSapMsg] = useState('');
   const [sapError, setSapError] = useState('');
+  const [sendingReminder, setSendingReminder] = useState(false);
+  const [reminderMsg, setReminderMsg] = useState('');
 
   useEffect(() => {
     Promise.all([kycApi.list(), kycApi.getDocs(id), kycApi.getFormData(id)])
@@ -115,6 +117,19 @@ function KycReviewContent({ id }) {
       setError(err.message);
     } finally {
       setExporting(false);
+    }
+  }
+
+  async function handleSendReminder() {
+    setSendingReminder(true);
+    setReminderMsg('');
+    try {
+      const result = await kycApi.sendReminders(7);
+      setReminderMsg(result.message || 'Reminder sent');
+    } catch (err) {
+      setReminderMsg('Failed: ' + err.message);
+    } finally {
+      setSendingReminder(false);
     }
   }
 
@@ -206,6 +221,19 @@ function KycReviewContent({ id }) {
                   <div style={{ fontWeight: 500 }}>{new Date(kycData.createdAt).toLocaleString()}</div>
                 </div>
               </div>
+              {kycData.status === 'Pending' && (
+                <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <button
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 14px', fontSize: 13 }}
+                    onClick={handleSendReminder}
+                    disabled={sendingReminder}
+                  >
+                    {sendingReminder ? 'Sending...' : 'Send Reminder'}
+                  </button>
+                  {reminderMsg && <span style={{ fontSize: 13, color: 'var(--gray-500)' }}>{reminderMsg}</span>}
+                </div>
+              )}
               {kycData.remarks && (
                 <div style={{ marginTop: 16, fontSize: 14 }}>
                   <span style={{ color: 'var(--gray-500)' }}>Remarks</span>

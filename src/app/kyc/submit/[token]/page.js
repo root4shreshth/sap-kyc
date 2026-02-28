@@ -1,8 +1,9 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { kycApi } from '@/lib/api-client';
 import { getDefaultFormData, getMockFormData } from './formSchema';
+import { validateFormData, getSectionCompletion } from './validation';
 import {
   BusinessInfoSection, ProprietorsSection, CompanyDetailsSection,
   OwnershipSection, BankingSection, ReferencesSection,
@@ -19,6 +20,8 @@ function KycPortalContent({ token }) {
   const [success, setSuccess] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
   const [demoMode, setDemoMode] = useState(false);
+  const [validationErrors, setValidationErrors] = useState({});
+  const sectionRefs = useRef([]);
 
   useEffect(() => {
     kycApi.portalValidate(token)
@@ -46,6 +49,16 @@ function KycPortalContent({ token }) {
       obj[field] = value;
       return next;
     });
+    // Clear error for this field when user types
+    setValidationErrors((prev) => {
+      const key = `${section}.${field}`;
+      if (prev[key]) {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }
+      return prev;
+    });
   }, []);
 
   const updateArray = useCallback((arrayKey, index, field, value) => {
@@ -55,6 +68,16 @@ function KycPortalContent({ token }) {
         next[arrayKey][index][field] = value;
       }
       return next;
+    });
+    // Clear error for this array field
+    setValidationErrors((prev) => {
+      const key = `${arrayKey}.${index}.${field}`;
+      if (prev[key]) {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }
+      return prev;
     });
   }, []);
 
@@ -87,6 +110,33 @@ function KycPortalContent({ token }) {
 
   async function handleSubmit() {
     setError('');
+
+    // Validate before submitting
+    const result = validateFormData(formData);
+    if (!result.valid) {
+      setValidationErrors(result.errors);
+      // Scroll to the first section that has errors
+      const errorKeys = Object.keys(result.errors);
+      if (errorKeys.length > 0) {
+        const firstErrorSection = errorKeys[0].split('.')[0];
+        const sectionIndex = SECTION_KEYS.findIndex(key => {
+          if (key === 'proprietors' && (firstErrorSection === 'proprietors' || firstErrorSection === 'managerInfo')) return true;
+          if (key === 'business' && firstErrorSection === 'businessInfo') return true;
+          if (key === 'company' && firstErrorSection === 'companyDetails') return true;
+          if (key === 'ownership' && firstErrorSection === 'ownershipManagement') return true;
+          if (key === 'banking' && firstErrorSection === 'bankReference') return true;
+          if (key === 'declaration' && firstErrorSection === 'declaration') return true;
+          return false;
+        });
+        if (sectionIndex >= 0 && sectionRefs.current[sectionIndex]) {
+          sectionRefs.current[sectionIndex].scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+      setError('Please fill in all required fields before submitting.');
+      return;
+    }
+
+    setValidationErrors({});
     setSubmitting(true);
     try {
       const multipart = new FormData();
@@ -149,6 +199,7 @@ function KycPortalContent({ token }) {
       const mock = getMockFormData();
       setFormData(mock);
       setDemoMode(true);
+      setValidationErrors({});
       setSaving(true);
       try {
         await kycApi.portalSaveForm(token, mock);
@@ -162,6 +213,7 @@ function KycPortalContent({ token }) {
       const blank = getDefaultFormData();
       setFormData(blank);
       setDemoMode(false);
+      setValidationErrors({});
       setSaving(true);
       try {
         await kycApi.portalSaveForm(token, blank);
@@ -174,28 +226,30 @@ function KycPortalContent({ token }) {
     }
   }
 
-  const sectionProps = { data: formData, update, updateArray, addRow, removeRow };
+  const sectionProps = { data: formData, update, updateArray, addRow, removeRow, errors: validationErrors };
+
+  const SECTION_KEYS = ['business', 'proprietors', 'company', 'ownership', 'banking', 'references', 'social', 'indian', 'declaration'];
 
   const SECTIONS = [
-    { label: 'Business Info', component: <BusinessInfoSection {...sectionProps} /> },
-    { label: 'Proprietors', component: <ProprietorsSection {...sectionProps} /> },
-    { label: 'Company (UAE)', component: <CompanyDetailsSection {...sectionProps} /> },
-    { label: 'Ownership', component: <OwnershipSection {...sectionProps} /> },
-    { label: 'Banking', component: <BankingSection {...sectionProps} /> },
-    { label: 'References', component: <ReferencesSection {...sectionProps} /> },
-    { label: 'Social Media', component: <SocialMediaSection {...sectionProps} /> },
-    { label: 'Indian Buyer', component: <IndianBuyerSection {...sectionProps} /> },
-    { label: 'Declaration & Docs', component: <DeclarationSection {...sectionProps} files={files} setFiles={setFiles} /> },
+    { key: 'business', label: 'Business Info', component: <BusinessInfoSection {...sectionProps} /> },
+    { key: 'proprietors', label: 'Proprietors', component: <ProprietorsSection {...sectionProps} /> },
+    { key: 'company', label: 'Company (UAE)', component: <CompanyDetailsSection {...sectionProps} /> },
+    { key: 'ownership', label: 'Ownership', component: <OwnershipSection {...sectionProps} /> },
+    { key: 'banking', label: 'Banking', component: <BankingSection {...sectionProps} /> },
+    { key: 'references', label: 'References', component: <ReferencesSection {...sectionProps} /> },
+    { key: 'social', label: 'Social Media', component: <SocialMediaSection {...sectionProps} /> },
+    { key: 'indian', label: 'Indian Buyer', component: <IndianBuyerSection {...sectionProps} /> },
+    { key: 'declaration', label: 'Declaration & Docs', component: <DeclarationSection {...sectionProps} files={files} setFiles={setFiles} /> },
   ];
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--gray-100)', padding: '32px 16px' }}>
       <div style={{ maxWidth: 800, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <img src="/logo.png" alt="Al-Amir" style={{ height: 60, marginBottom: 8 }} />
+          <img src={info.companyProfile?.logoUrl || '/logo.png'} alt="Company" style={{ height: 60, marginBottom: 8 }} onError={(e) => { e.target.src = '/logo.png'; }} />
           <h1 style={{ fontSize: 22, color: 'var(--navy)' }}>KYC / KYS Application Form</h1>
           <p style={{ color: 'var(--gray-500)', marginTop: 4, fontSize: 14 }}>
-            Alamir International Trading L.L.C
+            {info.companyProfile?.name || 'Alamir International Trading L.L.C'}
           </p>
         </div>
 
@@ -237,22 +291,36 @@ function KycPortalContent({ token }) {
         </div>
 
         {/* All sections on single page */}
-        {SECTIONS.map((s, i) => (
-          <div
-            key={i}
-            className="card"
-            style={{ marginBottom: 16 }}
-          >
-            <h3 style={{
-              fontSize: 15, fontWeight: 700, color: 'var(--navy)',
-              marginBottom: 16, paddingBottom: 8,
-              borderBottom: '2px solid var(--gray-200)',
-            }}>
-              {i + 1}. {s.label}
-            </h3>
-            {s.component}
-          </div>
-        ))}
+        {SECTIONS.map((s, i) => {
+          const completion = getSectionCompletion(formData, s.key);
+          return (
+            <div
+              key={i}
+              ref={(el) => { sectionRefs.current[i] = el; }}
+              className="card"
+              style={{ marginBottom: 16, scrollMarginTop: 16 }}
+            >
+              <h3 style={{
+                fontSize: 15, fontWeight: 700, color: 'var(--navy)',
+                marginBottom: 16, paddingBottom: 8,
+                borderBottom: '2px solid var(--gray-200)',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              }}>
+                <span>{i + 1}. {s.label}</span>
+                {completion !== null && (
+                  <span style={{
+                    fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 12,
+                    background: completion === 100 ? '#dcfce7' : '#fef3c7',
+                    color: completion === 100 ? '#16a34a' : '#d97706',
+                  }}>
+                    {completion === 100 ? 'Complete' : `${completion}%`}
+                  </span>
+                )}
+              </h3>
+              {s.component}
+            </div>
+          );
+        })}
 
         {error && <p className="error-msg" style={{ marginBottom: 12 }}>{error}</p>}
 

@@ -5,14 +5,15 @@ import { usePathname } from 'next/navigation';
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: '📊' },
   { href: '/kyc', label: 'KYC Requests', icon: '📋' },
-  { href: '/kyc/new', label: 'New KYC', icon: '➕', adminOnly: true },
+  { href: '/kyc/new', label: 'New KYC', icon: '➕', requireKycSend: true },
+  { href: '/kyc/bulk-import', label: 'Bulk Import', icon: '📤', adminOnly: true },
+  { href: '/team', label: 'Team', icon: '👥', adminOnly: true },
+  { href: '/settings/companies', label: 'Company Profiles', icon: '🏢', adminOnly: true },
 ];
 
 const COMING_SOON = [
-  { label: 'Vendor Management', icon: '🏢' },
   { label: 'Document Vault', icon: '🗂️' },
   { label: 'Reports & Analytics', icon: '📈' },
-  { label: 'Settings', icon: '⚙️' },
 ];
 
 export default function Sidebar({ user, onLogout }) {
@@ -42,6 +43,7 @@ export default function Sidebar({ user, onLogout }) {
         </div>
         {NAV_ITEMS.map((item) => {
           if (item.adminOnly && user?.role !== 'Admin') return null;
+          if (item.requireKycSend && user?.role !== 'Admin' && !user?.canSendKyc) return null;
           const active = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href + '/'));
           return (
             <Link

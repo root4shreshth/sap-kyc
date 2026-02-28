@@ -14,34 +14,232 @@ export async function getUserByEmail(email) {
   return data;
 }
 
-export async function createUser({ email, passwordHash, role }) {
+export async function createUser({ email, passwordHash, role, name, canSendKyc, createdByAdmin }) {
   const supabase = getSupabase();
+  const insertData = { email, password_hash: passwordHash, role };
+  if (name !== undefined) insertData.name = name;
+  if (canSendKyc !== undefined) insertData.can_send_kyc = canSendKyc;
+  if (createdByAdmin !== undefined) insertData.created_by_admin = createdByAdmin;
   const { data, error } = await supabase
     .from('users')
-    .insert({ email, password_hash: passwordHash, role })
+    .insert(insertData)
     .select()
     .single();
   if (error) throw error;
   return data;
 }
 
-// ==================== KYC ====================
-
-export async function createKyc({ id, clientName, companyName, email, tokenHash, tokenExpiry, status, remarks, createdBy }) {
+export async function getAllUsers() {
   const supabase = getSupabase();
   const { data, error } = await supabase
-    .from('kyc')
+    .from('users')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(row => ({
+    id: row.id,
+    email: row.email,
+    name: row.name || '',
+    role: row.role,
+    isActive: row.is_active !== false,
+    canSendKyc: row.can_send_kyc || false,
+    createdByAdmin: row.created_by_admin || '',
+    lastLoginAt: row.last_login_at || null,
+    createdAt: row.created_at,
+  }));
+}
+
+export async function getUserById(id) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (error && error.code !== 'PGRST116') throw error;
+  if (!data) return null;
+  return {
+    id: data.id,
+    email: data.email,
+    name: data.name || '',
+    role: data.role,
+    isActive: data.is_active !== false,
+    canSendKyc: data.can_send_kyc || false,
+    createdByAdmin: data.created_by_admin || '',
+    lastLoginAt: data.last_login_at || null,
+    createdAt: data.created_at,
+  };
+}
+
+export async function updateUser(id, fields) {
+  const supabase = getSupabase();
+  const updateData = {};
+  if (fields.name !== undefined) updateData.name = fields.name;
+  if (fields.role !== undefined) updateData.role = fields.role;
+  if (fields.isActive !== undefined) updateData.is_active = fields.isActive;
+  if (fields.canSendKyc !== undefined) updateData.can_send_kyc = fields.canSendKyc;
+  if (fields.passwordHash !== undefined) updateData.password_hash = fields.passwordHash;
+  if (fields.lastLoginAt !== undefined) updateData.last_login_at = fields.lastLoginAt;
+  const { error } = await supabase
+    .from('users')
+    .update(updateData)
+    .eq('id', id);
+  if (error) throw error;
+}
+
+export async function getUserActivity(email, limit = 20) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('audit_log')
+    .select('*')
+    .eq('actor', email)
+    .order('timestamp', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data || []).map(row => ({
+    action: row.action,
+    kycId: row.kyc_id,
+    details: row.details,
+    timestamp: row.timestamp,
+  }));
+}
+
+export async function getTeamStats() {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('audit_log')
+    .select('actor, action, details, timestamp')
+    .order('timestamp', { ascending: false });
+  if (error) throw error;
+
+  const statsMap = {};
+  (data || []).forEach(row => {
+    if (!statsMap[row.actor]) {
+      statsMap[row.actor] = { email: row.actor, kycCreated: 0, kycApproved: 0, kycRejected: 0, lastAction: row.timestamp };
+    }
+    if (row.action === 'KYC_CREATED') statsMap[row.actor].kycCreated++;
+    if (row.action === 'STATUS_CHANGED' && row.details?.includes?.('Approved')) statsMap[row.actor].kycApproved++;
+    if (row.action === 'STATUS_CHANGED' && row.details?.includes?.('Rejected')) statsMap[row.actor].kycRejected++;
+  });
+
+  return Object.values(statsMap);
+}
+
+// ==================== COMPANY PROFILES ====================
+
+export async function getAllCompanyProfiles() {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('company_profiles')
+    .select('*')
+    .eq('is_active', true)
+    .order('name');
+  if (error) throw error;
+  return (data || []).map(row => ({
+    id: row.id,
+    name: row.name,
+    shortName: row.short_name,
+    logoUrl: row.logo_url || '',
+    emailSenderName: row.email_sender_name,
+    address: row.address || '',
+    phone: row.phone || '',
+    website: row.website || '',
+    footerText: row.footer_text || '',
+    primaryColor: row.primary_color || '#2563eb',
+    isDefault: row.is_default || false,
+    createdAt: row.created_at,
+  }));
+}
+
+export async function getCompanyProfileById(id) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('company_profiles')
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (error && error.code !== 'PGRST116') throw error;
+  if (!data) return null;
+  return {
+    id: data.id,
+    name: data.name,
+    shortName: data.short_name,
+    logoUrl: data.logo_url || '',
+    emailSenderName: data.email_sender_name,
+    address: data.address || '',
+    phone: data.phone || '',
+    website: data.website || '',
+    footerText: data.footer_text || '',
+    primaryColor: data.primary_color || '#2563eb',
+    isDefault: data.is_default || false,
+    createdAt: data.created_at,
+  };
+}
+
+export async function createCompanyProfile({ name, shortName, logoUrl, emailSenderName, address, phone, website, footerText, primaryColor, isDefault }) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('company_profiles')
     .insert({
-      id,
-      client_name: clientName,
-      company_name: companyName,
-      email,
-      token_hash: tokenHash,
-      token_expiry: tokenExpiry,
-      status: status || 'Pending',
-      remarks: remarks || '',
-      created_by: createdBy,
+      name,
+      short_name: shortName,
+      logo_url: logoUrl || '',
+      email_sender_name: emailSenderName,
+      address: address || '',
+      phone: phone || '',
+      website: website || '',
+      footer_text: footerText || '',
+      primary_color: primaryColor || '#2563eb',
+      is_default: isDefault || false,
     })
+    .select()
+    .single();
+  if (error) throw error;
+  return { id: data.id, name: data.name, shortName: data.short_name };
+}
+
+export async function updateCompanyProfile(id, fields) {
+  const supabase = getSupabase();
+  const updateData = { updated_at: new Date().toISOString() };
+  if (fields.name !== undefined) updateData.name = fields.name;
+  if (fields.shortName !== undefined) updateData.short_name = fields.shortName;
+  if (fields.logoUrl !== undefined) updateData.logo_url = fields.logoUrl;
+  if (fields.emailSenderName !== undefined) updateData.email_sender_name = fields.emailSenderName;
+  if (fields.address !== undefined) updateData.address = fields.address;
+  if (fields.phone !== undefined) updateData.phone = fields.phone;
+  if (fields.website !== undefined) updateData.website = fields.website;
+  if (fields.footerText !== undefined) updateData.footer_text = fields.footerText;
+  if (fields.primaryColor !== undefined) updateData.primary_color = fields.primaryColor;
+  if (fields.isDefault !== undefined) updateData.is_default = fields.isDefault;
+  if (fields.isActive !== undefined) updateData.is_active = fields.isActive;
+  const { error } = await supabase
+    .from('company_profiles')
+    .update(updateData)
+    .eq('id', id);
+  if (error) throw error;
+}
+
+// ==================== KYC ====================
+
+export async function createKyc({ id, clientName, companyName, email, tokenHash, tokenExpiry, status, remarks, createdBy, companyProfileId, phone, phoneCountryCode }) {
+  const supabase = getSupabase();
+  const insertData = {
+    id,
+    client_name: clientName,
+    company_name: companyName,
+    email,
+    token_hash: tokenHash,
+    token_expiry: tokenExpiry,
+    status: status || 'Pending',
+    remarks: remarks || '',
+    created_by: createdBy,
+  };
+  if (companyProfileId) insertData.company_profile_id = companyProfileId;
+  if (phone) insertData.phone = phone;
+  if (phoneCountryCode) insertData.phone_country_code = phoneCountryCode;
+  const { data, error } = await supabase
+    .from('kyc')
+    .insert(insertData)
     .select()
     .single();
   if (error) throw error;
@@ -72,6 +270,9 @@ export async function getAllKyc() {
     sapBpType: row.sap_bp_type || '',
     sapSyncedAt: row.sap_synced_at || null,
     sapSyncError: row.sap_sync_error || '',
+    companyProfileId: row.company_profile_id || null,
+    phone: row.phone || '',
+    phoneCountryCode: row.phone_country_code || '',
     createdBy: row.created_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -96,6 +297,9 @@ export async function getKycByTokenHash(tokenHash) {
     tokenExpiry: data.token_expiry,
     status: data.status,
     remarks: data.remarks,
+    companyProfileId: data.company_profile_id || null,
+    phone: data.phone || '',
+    phoneCountryCode: data.phone_country_code || '',
     createdBy: data.created_by,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
@@ -126,6 +330,9 @@ export async function getKycById(id) {
     sapBpType: data.sap_bp_type || '',
     sapSyncedAt: data.sap_synced_at || null,
     sapSyncError: data.sap_sync_error || '',
+    companyProfileId: data.company_profile_id || null,
+    phone: data.phone || '',
+    phoneCountryCode: data.phone_country_code || '',
     createdBy: data.created_by,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
@@ -585,6 +792,51 @@ export async function getDocsByKycId(kycId) {
     fileName: row.file_name,
     uploadedAt: row.uploaded_at,
   }));
+}
+
+// ==================== KYC EXPIRY ====================
+
+export async function getExpiringKyc(daysBeforeExpiry = 2) {
+  const supabase = getSupabase();
+  const now = new Date();
+  const cutoff = new Date(now.getTime() + daysBeforeExpiry * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabase
+    .from('kyc')
+    .select('*')
+    .eq('status', 'Pending')
+    .lte('token_expiry', cutoff)
+    .gte('token_expiry', now.toISOString())
+    .order('token_expiry', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(row => ({
+    id: row.id,
+    clientName: row.client_name,
+    companyName: row.company_name,
+    email: row.email,
+    phone: row.phone || '',
+    phoneCountryCode: row.phone_country_code || '',
+    tokenExpiry: row.token_expiry,
+    companyProfileId: row.company_profile_id || null,
+    createdBy: row.created_by,
+  }));
+}
+
+// ==================== MESSAGE LOG ====================
+
+export async function createMessageLog({ kycId, channel, recipient, messageType, status, errorMessage, metadata }) {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from('message_log')
+    .insert({
+      kyc_id: kycId || null,
+      channel,
+      recipient,
+      message_type: messageType,
+      status: status || 'sent',
+      error_message: errorMessage || '',
+      metadata: metadata || {},
+    });
+  if (error) throw error;
 }
 
 // ==================== AUDIT ====================

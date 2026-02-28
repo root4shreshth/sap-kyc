@@ -1,17 +1,30 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { AuthProvider } from '@/components/AuthProvider';
 import ProtectedLayout from '@/components/ProtectedLayout';
-import { kycApi } from '@/lib/api-client';
+import { kycApi, companyApi } from '@/lib/api-client';
+import PhoneInput from '@/components/PhoneInput';
 
 function KycNewContent() {
   const router = useRouter();
-  const [form, setForm] = useState({ clientName: '', companyName: '', email: '', ccEmail: '' });
+  const [form, setForm] = useState({ clientName: '', companyName: '', email: '', ccEmail: '', companyProfileId: '', phone: '', phoneCountryCode: '+971' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [companyProfiles, setCompanyProfiles] = useState([]);
+
+  useEffect(() => {
+    companyApi.list().then((profiles) => {
+      setCompanyProfiles(profiles);
+      // Pre-select default profile
+      const defaultProfile = profiles.find(p => p.isDefault);
+      if (defaultProfile) {
+        setForm(f => ({ ...f, companyProfileId: defaultProfile.id }));
+      }
+    }).catch(() => {});
+  }, []);
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -78,7 +91,7 @@ function KycNewContent() {
             )}
 
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-              <button className="btn btn-primary" onClick={() => { setResult(null); setForm({ clientName: '', companyName: '', email: '', ccEmail: '' }); }}>
+              <button className="btn btn-primary" onClick={() => { setResult(null); setForm({ clientName: '', companyName: '', email: '', ccEmail: '', companyProfileId: companyProfiles.find(p => p.isDefault)?.id || '', phone: '', phoneCountryCode: '+971' }); }}>
                 Create Another
               </button>
               <button className="btn btn-secondary" onClick={() => router.push('/kyc')}>
@@ -97,6 +110,20 @@ function KycNewContent() {
         <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 24 }}>Create KYC Request</h1>
         <div className="card">
           <form onSubmit={handleSubmit}>
+            {companyProfiles.length > 0 && (
+              <div className="form-group">
+                <label>Company Profile</label>
+                <select value={form.companyProfileId} onChange={(e) => update('companyProfileId', e.target.value)}>
+                  <option value="">-- No profile --</option>
+                  {companyProfiles.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}{p.isDefault ? ' (Default)' : ''}</option>
+                  ))}
+                </select>
+                <p style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>
+                  Selects branding for emails and the client portal.
+                </p>
+              </div>
+            )}
             <div className="form-group">
               <label>Client Name</label>
               <input value={form.clientName} onChange={(e) => update('clientName', e.target.value)} required placeholder="John Doe" />
@@ -108,6 +135,15 @@ function KycNewContent() {
             <div className="form-group">
               <label>Client Email</label>
               <input type="email" value={form.email} onChange={(e) => update('email', e.target.value)} required placeholder="client@company.com" />
+            </div>
+            <div className="form-group">
+              <label>Client Phone <span style={{ color: 'var(--gray-400)', fontWeight: 400 }}>(optional — for WhatsApp)</span></label>
+              <PhoneInput
+                countryCode={form.phoneCountryCode}
+                phone={form.phone}
+                onCountryCodeChange={(code) => update('phoneCountryCode', code)}
+                onPhoneChange={(val) => update('phone', val)}
+              />
             </div>
             <div className="form-group">
               <label>CC Email <span style={{ color: 'var(--gray-400)', fontWeight: 400 }}>(optional)</span></label>

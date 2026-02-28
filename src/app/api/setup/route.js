@@ -4,33 +4,58 @@ import { ensureBucket } from '@/lib/storage';
 
 const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
-  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  email       TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
-  role        TEXT NOT NULL CHECK (role IN ('Admin', 'KYC Team')),
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  email           TEXT UNIQUE NOT NULL,
+  password_hash   TEXT NOT NULL,
+  role            TEXT NOT NULL CHECK (role IN ('Admin', 'KYC Team')),
+  name            TEXT DEFAULT '',
+  is_active       BOOLEAN DEFAULT TRUE,
+  can_send_kyc    BOOLEAN DEFAULT FALSE,
+  created_by_admin TEXT DEFAULT '',
+  last_login_at   TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS company_profiles (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name              TEXT NOT NULL,
+  short_name        TEXT NOT NULL,
+  logo_url          TEXT DEFAULT '',
+  email_sender_name TEXT NOT NULL,
+  address           TEXT DEFAULT '',
+  phone             TEXT DEFAULT '',
+  website           TEXT DEFAULT '',
+  footer_text       TEXT DEFAULT '',
+  primary_color     TEXT DEFAULT '#2563eb',
+  is_default        BOOLEAN DEFAULT FALSE,
+  is_active         BOOLEAN DEFAULT TRUE,
+  created_at        TIMESTAMPTZ DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS kyc (
-  id           UUID PRIMARY KEY,
-  client_name  TEXT NOT NULL,
-  company_name TEXT NOT NULL,
-  email        TEXT NOT NULL,
-  token_hash   TEXT,
-  token_expiry TIMESTAMPTZ,
-  status       TEXT NOT NULL DEFAULT 'Pending'
-               CHECK (status IN ('Pending', 'Submitted', 'Under Review', 'Approved', 'Rejected')),
-  remarks      TEXT DEFAULT '',
-  created_by   TEXT NOT NULL,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  form_data    JSONB DEFAULT '{}',
-  pep_status   TEXT DEFAULT '',
-  pep_details  TEXT DEFAULT '',
-  sap_card_code  TEXT DEFAULT '',
-  sap_bp_type    TEXT DEFAULT '',
-  sap_synced_at  TIMESTAMPTZ,
-  sap_sync_error TEXT DEFAULT ''
+  id                 UUID PRIMARY KEY,
+  client_name        TEXT NOT NULL,
+  company_name       TEXT NOT NULL,
+  email              TEXT NOT NULL,
+  token_hash         TEXT,
+  token_expiry       TIMESTAMPTZ,
+  status             TEXT NOT NULL DEFAULT 'Pending'
+                     CHECK (status IN ('Pending', 'Submitted', 'Under Review', 'Approved', 'Rejected')),
+  remarks            TEXT DEFAULT '',
+  created_by         TEXT NOT NULL,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  form_data          JSONB DEFAULT '{}',
+  pep_status         TEXT DEFAULT '',
+  pep_details        TEXT DEFAULT '',
+  sap_card_code      TEXT DEFAULT '',
+  sap_bp_type        TEXT DEFAULT '',
+  sap_synced_at      TIMESTAMPTZ,
+  sap_sync_error     TEXT DEFAULT '',
+  company_profile_id UUID REFERENCES company_profiles(id),
+  phone              TEXT DEFAULT '',
+  phone_country_code TEXT DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS kyc_docs (
@@ -260,10 +285,22 @@ CREATE TABLE IF NOT EXISTS kyc_compliance_results (
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(kyc_id, check_key)
 );
+
+CREATE TABLE IF NOT EXISTS message_log (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  kyc_id        UUID REFERENCES kyc(id),
+  channel       TEXT NOT NULL CHECK (channel IN ('email', 'whatsapp')),
+  recipient     TEXT NOT NULL,
+  message_type  TEXT NOT NULL,
+  status        TEXT DEFAULT 'sent',
+  error_message TEXT DEFAULT '',
+  metadata      JSONB DEFAULT '{}',
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
 `;
 
 const ALL_TABLES = [
-  'users', 'kyc', 'kyc_docs', 'audit_log',
+  'users', 'company_profiles', 'kyc', 'kyc_docs', 'audit_log', 'message_log',
   'kyc_form', 'kyc_proprietors', 'kyc_ownership_management',
   'kyc_banking_checks', 'kyc_supplier_references', 'kyc_trade_references',
   'kyc_regulatory_compliance', 'kyc_social_media_reviews', 'kyc_warehouse_addresses', 'kyc_compliance_results',

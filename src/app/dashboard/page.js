@@ -29,6 +29,9 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [createdByFilter, setCreatedByFilter] = useState('');
 
   useEffect(() => {
     Promise.all([kycApi.stats(), kycApi.list()])
@@ -54,8 +57,16 @@ function DashboardContent() {
     }
   }
 
-  const filteredRows = filter ? rows.filter((r) => r.status === filter) : rows;
+  const creators = [...new Set(rows.map(r => r.createdBy).filter(Boolean))];
+  const filteredRows = rows.filter(r => {
+    if (filter && r.status !== filter) return false;
+    if (createdByFilter && r.createdBy !== createdByFilter) return false;
+    if (dateFrom && new Date(r.createdAt) < new Date(dateFrom)) return false;
+    if (dateTo && new Date(r.createdAt) > new Date(dateTo + 'T23:59:59')) return false;
+    return true;
+  });
   const total = rows.length;
+  const hasFilters = filter || createdByFilter || dateFrom || dateTo;
 
   return (
     <ProtectedLayout roles={['Admin', 'KYC Team']}>
@@ -108,23 +119,40 @@ function DashboardContent() {
           </div>
         )}
 
+        {/* Filters bar */}
+        <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            <span style={{ color: 'var(--gray-500)' }}>From:</span>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              style={{ padding: '6px 10px', border: '1px solid var(--gray-200)', borderRadius: 6, fontSize: 13 }} />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+            <span style={{ color: 'var(--gray-500)' }}>To:</span>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              style={{ padding: '6px 10px', border: '1px solid var(--gray-200)', borderRadius: 6, fontSize: 13 }} />
+          </div>
+          {creators.length > 1 && (
+            <select value={createdByFilter} onChange={e => setCreatedByFilter(e.target.value)}
+              style={{ padding: '6px 10px', border: '1px solid var(--gray-200)', borderRadius: 6, fontSize: 13 }}>
+              <option value="">All team members</option>
+              {creators.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
+          {hasFilters && (
+            <button onClick={() => { setFilter(null); setCreatedByFilter(''); setDateFrom(''); setDateTo(''); }}
+              style={{ padding: '6px 12px', fontSize: 12, border: '1px solid var(--gray-200)', borderRadius: 6, background: 'var(--gray-100)', cursor: 'pointer', color: 'var(--gray-500)' }}>
+              Clear all filters
+            </button>
+          )}
+        </div>
+
         {/* Filter indicator */}
-        {filter && (
+        {hasFilters && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16,
             fontSize: 14, color: 'var(--gray-600)',
           }}>
-            <span>Showing <strong>{filteredRows.length}</strong> {filter} requests</span>
-            <button
-              onClick={() => setFilter(null)}
-              style={{
-                background: 'var(--gray-100)', border: '1px solid var(--gray-200)',
-                borderRadius: 4, padding: '2px 8px', fontSize: 12, cursor: 'pointer',
-                color: 'var(--gray-500)',
-              }}
-            >
-              Clear filter
-            </button>
+            <span>Showing <strong>{filteredRows.length}</strong> of {total} requests</span>
           </div>
         )}
 

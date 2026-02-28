@@ -25,6 +25,42 @@ export const sheetsApi = {
     fetch('/api/sync-sheets', { method: 'POST', headers: getHeaders() }).then(handleResponse),
 };
 
+export const companyApi = {
+  list: () =>
+    fetch('/api/company-profiles', { headers: getHeaders() }).then(handleResponse),
+  create: (data) =>
+    fetch('/api/company-profiles', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    }).then(handleResponse),
+  update: (id, data) =>
+    fetch(`/api/company-profiles/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    }).then(handleResponse),
+};
+
+export const teamApi = {
+  list: () =>
+    fetch('/api/team', { headers: getHeaders() }).then(handleResponse),
+  create: (data) =>
+    fetch('/api/team', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    }).then(handleResponse),
+  getById: (id) =>
+    fetch(`/api/team/${id}`, { headers: getHeaders() }).then(handleResponse),
+  update: (id, data) =>
+    fetch(`/api/team/${id}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    }).then(handleResponse),
+};
+
 export const kycApi = {
   stats: () =>
     fetch('/api/kyc/stats', { headers: getHeaders() }).then(handleResponse),
@@ -107,6 +143,13 @@ export const kycApi = {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({ bpType }),
+    }).then(handleResponse),
+
+  sendReminders: (days) =>
+    fetch('/api/kyc/send-reminders', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ days: days || 2 }),
     }).then(handleResponse),
 
   portalValidate: (token) =>
