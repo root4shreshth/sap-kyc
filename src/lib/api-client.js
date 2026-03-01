@@ -58,6 +58,8 @@ export const companyApi = {
 export const teamApi = {
   list: () =>
     fetch('/api/team', { headers: getHeaders() }).then(handleResponse),
+  listWithMigrationCheck: () =>
+    fetch('/api/team?checkMigration=true', { headers: getHeaders() }).then(handleResponse),
   create: (data) =>
     fetch('/api/team', {
       method: 'POST',

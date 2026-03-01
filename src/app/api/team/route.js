@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { requireAuth, isValidEmail } from '@/lib/auth';
-import { getAllUsers, createUser, createAuditEntry, getTeamStats, ensureMigration } from '@/lib/db';
+import { getAllUsers, createUser, createAuditEntry, getTeamStats, ensureMigration, isMigrationNeeded, getMigrationSql } from '@/lib/db';
 
 export async function GET(request) {
   const { user, error } = requireAuth(request, ['Admin']);
@@ -9,7 +9,9 @@ export async function GET(request) {
 
   try {
     // Auto-migrate DB on first team page load
-    await ensureMigration();
+    const url = new URL(request.url);
+    const forceCheck = url.searchParams.get('checkMigration') === 'true';
+    await ensureMigration(forceCheck);
 
     const [users, stats] = await Promise.all([getAllUsers(), getTeamStats()]);
 
@@ -25,7 +27,14 @@ export async function GET(request) {
       };
     });
 
-    return NextResponse.json(enriched);
+    // Wrap response with migration status
+    const response = { members: enriched };
+    if (isMigrationNeeded()) {
+      response.migrationNeeded = true;
+      response.migrationSql = getMigrationSql();
+    }
+
+    return NextResponse.json(response);
   } catch (err) {
     console.error('List team error:', err);
     return NextResponse.json({ error: `Failed to fetch team members: ${err.message || 'Unknown error'}` }, { status: 500 });

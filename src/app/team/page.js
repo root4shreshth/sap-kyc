@@ -5,6 +5,102 @@ import { AuthProvider } from '@/components/AuthProvider';
 import ProtectedLayout from '@/components/ProtectedLayout';
 import { teamApi } from '@/lib/api-client';
 
+function MigrationBanner({ sql, onVerify }) {
+  const [copied, setCopied] = useState(false);
+  const [showSql, setShowSql] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(sql);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 3000);
+    } catch {
+      // Fallback: select text
+      setShowSql(true);
+    }
+  }
+
+  async function handleVerify() {
+    setVerifying(true);
+    await onVerify();
+    setVerifying(false);
+  }
+
+  return (
+    <div style={{
+      background: '#fffbeb', border: '1px solid #fbbf24', borderRadius: 12,
+      padding: 20, marginBottom: 24,
+    }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+        <span style={{ fontSize: 24, lineHeight: 1 }}>&#9888;</span>
+        <div style={{ flex: 1 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: '#92400e', marginBottom: 6 }}>
+            Database Update Required
+          </h3>
+          <p style={{ fontSize: 13, color: '#78350f', marginBottom: 12, lineHeight: 1.5 }}>
+            Your database is missing columns needed for team profiles (name, designation, etc.).
+            Names and profile data <strong>will not save</strong> until this is fixed.
+            Copy the SQL below and run it in your Supabase SQL Editor.
+          </p>
+          <div style={{ fontSize: 13, color: '#78350f', marginBottom: 16, lineHeight: 1.7 }}>
+            <strong>Steps:</strong>
+            <ol style={{ margin: '4px 0 0 20px', padding: 0 }}>
+              <li>Go to <strong>supabase.com</strong> &rarr; your project</li>
+              <li>Click <strong>SQL Editor</strong> in the left sidebar</li>
+              <li>Click <strong>New Query</strong></li>
+              <li>Paste the copied SQL and click <strong>Run</strong></li>
+              <li>Come back here and click <strong>Verify Migration</strong></li>
+            </ol>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button
+              onClick={handleCopy}
+              style={{
+                padding: '8px 20px', fontSize: 13, fontWeight: 600, borderRadius: 8,
+                border: 'none', cursor: 'pointer',
+                background: copied ? '#16a34a' : '#2563eb', color: 'white',
+              }}
+            >
+              {copied ? '✓ SQL Copied!' : 'Copy Migration SQL'}
+            </button>
+            <button
+              onClick={handleVerify}
+              disabled={verifying}
+              style={{
+                padding: '8px 20px', fontSize: 13, fontWeight: 600, borderRadius: 8,
+                border: '1px solid #d97706', cursor: 'pointer',
+                background: 'white', color: '#92400e',
+              }}
+            >
+              {verifying ? 'Checking...' : 'Verify Migration'}
+            </button>
+            <button
+              onClick={() => setShowSql(!showSql)}
+              style={{
+                padding: '8px 16px', fontSize: 13, borderRadius: 8,
+                border: '1px solid #e5e7eb', cursor: 'pointer',
+                background: 'white', color: '#6b7280',
+              }}
+            >
+              {showSql ? 'Hide SQL' : 'Show SQL'}
+            </button>
+          </div>
+          {showSql && (
+            <pre style={{
+              marginTop: 12, padding: 16, background: '#1e293b', color: '#e2e8f0',
+              borderRadius: 8, fontSize: 12, lineHeight: 1.6, overflow: 'auto',
+              maxHeight: 400, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+            }}>
+              {sql}
+            </pre>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TeamContent() {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -12,19 +108,37 @@ function TeamContent() {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'KYC Team', canSendKyc: false });
   const [saving, setSaving] = useState(false);
+  const [migrationNeeded, setMigrationNeeded] = useState(false);
+  const [migrationSql, setMigrationSql] = useState('');
 
   useEffect(() => { loadMembers(); }, []);
 
-  async function loadMembers() {
+  async function loadMembers(forceCheck) {
     setLoading(true);
     try {
-      const data = await teamApi.list();
-      setMembers(data);
+      const data = forceCheck
+        ? await teamApi.listWithMigrationCheck()
+        : await teamApi.list();
+
+      // Handle new wrapped response format
+      if (data.members) {
+        setMembers(data.members);
+        setMigrationNeeded(!!data.migrationNeeded);
+        setMigrationSql(data.migrationSql || '');
+      } else if (Array.isArray(data)) {
+        // Backward-compat: if API returns plain array (shouldn't happen, but safe)
+        setMembers(data);
+        setMigrationNeeded(false);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleVerifyMigration() {
+    await loadMembers(true);
   }
 
   async function handleCreate(e) {
@@ -59,6 +173,11 @@ function TeamContent() {
   return (
     <ProtectedLayout roles={['Admin']}>
       <div className="container" style={{ paddingTop: 32 }}>
+        {/* Migration Banner */}
+        {migrationNeeded && (
+          <MigrationBanner sql={migrationSql} onVerify={handleVerifyMigration} />
+        )}
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <h1 style={{ fontSize: 24, fontWeight: 600 }}>Team Management</h1>
           <button className="btn btn-primary" onClick={() => setShowCreate(!showCreate)}>

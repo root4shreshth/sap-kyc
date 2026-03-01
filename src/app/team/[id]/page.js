@@ -15,6 +15,63 @@ function InfoRow({ label, value }) {
   );
 }
 
+function MigrationBanner({ sql }) {
+  const [copied, setCopied] = useState(false);
+  const [showSql, setShowSql] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(sql);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 3000);
+    } catch {
+      setShowSql(true);
+    }
+  }
+
+  return (
+    <div style={{
+      background: '#fffbeb', border: '1px solid #fbbf24', borderRadius: 12,
+      padding: 16, marginBottom: 20,
+    }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+        <span style={{ fontSize: 20, lineHeight: 1 }}>&#9888;</span>
+        <div style={{ flex: 1 }}>
+          <p style={{ fontSize: 13, color: '#78350f', marginBottom: 10, lineHeight: 1.5 }}>
+            <strong>Database update required.</strong> Profile data (name, designation, etc.) won&apos;t save until you run the migration SQL in Supabase.
+            Go to the <a href="/team" style={{ color: '#2563eb', textDecoration: 'underline' }}>Team page</a> for full instructions, or copy the SQL below.
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={handleCopy} style={{
+              padding: '6px 14px', fontSize: 12, fontWeight: 600, borderRadius: 6,
+              border: 'none', cursor: 'pointer',
+              background: copied ? '#16a34a' : '#2563eb', color: 'white',
+            }}>
+              {copied ? '✓ Copied!' : 'Copy SQL'}
+            </button>
+            <button onClick={() => setShowSql(!showSql)} style={{
+              padding: '6px 14px', fontSize: 12, borderRadius: 6,
+              border: '1px solid #e5e7eb', cursor: 'pointer',
+              background: 'white', color: '#6b7280',
+            }}>
+              {showSql ? 'Hide' : 'Show SQL'}
+            </button>
+          </div>
+          {showSql && (
+            <pre style={{
+              marginTop: 10, padding: 12, background: '#1e293b', color: '#e2e8f0',
+              borderRadius: 8, fontSize: 11, lineHeight: 1.5, overflow: 'auto',
+              maxHeight: 300, whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+            }}>
+              {sql}
+            </pre>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MemberDetail({ id }) {
   const [member, setMember] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -23,6 +80,8 @@ function MemberDetail({ id }) {
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [migrationNeeded, setMigrationNeeded] = useState(false);
+  const [migrationSql, setMigrationSql] = useState('');
 
   useEffect(() => { loadMember(); }, [id]);
 
@@ -31,6 +90,8 @@ function MemberDetail({ id }) {
     try {
       const data = await teamApi.getById(id);
       setMember(data);
+      setMigrationNeeded(!!data.migrationNeeded);
+      setMigrationSql(data.migrationSql || '');
       setForm({
         name: data.name || '', role: data.role, isActive: data.isActive, canSendKyc: data.canSendKyc,
         password: '',
@@ -102,6 +163,8 @@ function MemberDetail({ id }) {
         <Link href="/team" style={{ fontSize: 13, color: 'var(--blue)', marginBottom: 16, display: 'inline-block' }}>
           &larr; Back to Team
         </Link>
+
+        {migrationNeeded && <MigrationBanner sql={migrationSql} />}
 
         {successMsg && <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#16a34a', padding: '10px 16px', borderRadius: 8, marginBottom: 16, fontSize: 14 }}>{successMsg}</div>}
         {!editing && error && <p className="error-msg" style={{ marginBottom: 16 }}>{error}</p>}

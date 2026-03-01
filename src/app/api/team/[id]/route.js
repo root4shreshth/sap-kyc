@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { requireAuth } from '@/lib/auth';
-import { getUserById, updateUser, getUserActivity, getTeamStats, createAuditEntry, ensureMigration } from '@/lib/db';
+import { getUserById, updateUser, getUserActivity, getTeamStats, createAuditEntry, ensureMigration, isMigrationNeeded, getMigrationSql } from '@/lib/db';
 
 export async function GET(request, { params }) {
   const { user, error } = requireAuth(request, ['Admin']);
@@ -22,14 +22,21 @@ export async function GET(request, { params }) {
     // Find this member's stats
     const stats = allStats.find(s => s.email === member.email) || {};
 
-    return NextResponse.json({
+    const response = {
       ...member,
       activity,
       kycCreated: stats.kycCreated || 0,
       kycApproved: stats.kycApproved || 0,
       kycRejected: stats.kycRejected || 0,
       lastAction: stats.lastAction || null,
-    });
+    };
+
+    if (isMigrationNeeded()) {
+      response.migrationNeeded = true;
+      response.migrationSql = getMigrationSql();
+    }
+
+    return NextResponse.json(response);
   } catch (err) {
     console.error('Get team member error:', err);
     return NextResponse.json({ error: `Failed to fetch member: ${err.message || 'Unknown error'}` }, { status: 500 });

@@ -3,8 +3,11 @@ import { syncKycToSheet, syncFormDataToSheet, syncComplianceToSheet, syncDocToSh
 
 // ==================== AUTO-MIGRATION ====================
 // Attempts to add missing columns/tables on first call. Runs once per server lifecycle.
+// If exec_sql RPC doesn't exist in Supabase, migration will fail silently.
+// In that case, isMigrationNeeded() returns true and getMigrationSql() returns the SQL to run manually.
 
 let _migrationAttempted = false;
+let _migrationNeeded = null; // null = not checked yet, true = columns missing, false = all good
 
 const MIGRATION_SQL = [
   "ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT DEFAULT ''",
@@ -45,16 +48,20 @@ CREATE TABLE IF NOT EXISTS message_log (
 );
 `;
 
-export async function ensureMigration() {
-  if (_migrationAttempted) return;
+export async function ensureMigration(forceRecheck = false) {
+  if (_migrationAttempted && !forceRecheck) return;
   _migrationAttempted = true;
 
   try {
     const supabase = getSupabase();
     // Quick check: try selecting an optional column
     const { error: testErr } = await supabase.from('users').select('name').limit(0);
-    if (!testErr) return; // columns exist, no migration needed
+    if (!testErr) {
+      _migrationNeeded = false;
+      return; // columns exist, no migration needed
+    }
 
+    _migrationNeeded = true;
     console.log('Auto-migration: detected missing columns, attempting migration via exec_sql...');
 
     // Try creating new tables first
@@ -65,10 +72,49 @@ export async function ensureMigration() {
       await supabase.rpc('exec_sql', { query: sql }).catch(() => {});
     }
 
-    console.log('Auto-migration: done.');
+    // Re-check if migration actually worked
+    const { error: recheckErr } = await supabase.from('users').select('name').limit(0);
+    if (!recheckErr) {
+      _migrationNeeded = false;
+      console.log('Auto-migration: succeeded!');
+    } else {
+      _migrationNeeded = true;
+      console.warn('Auto-migration: exec_sql not available. User needs to run SQL manually in Supabase SQL Editor.');
+    }
   } catch (err) {
+    _migrationNeeded = true;
     console.warn('Auto-migration: could not run automatically.', err.message);
   }
+}
+
+export function isMigrationNeeded() {
+  return _migrationNeeded === true;
+}
+
+export function getMigrationSql() {
+  const lines = [
+    '-- ============================================================',
+    '-- Database Migration SQL for Alamir KYC Platform (Phase 2)',
+    '-- Run this in: Supabase Dashboard > SQL Editor > New Query',
+    '-- ============================================================',
+    '',
+    '-- Step 1: Create exec_sql helper (enables future auto-migrations)',
+    'CREATE OR REPLACE FUNCTION exec_sql(query TEXT) RETURNS VOID AS $$',
+    'BEGIN EXECUTE query; END;',
+    '$$ LANGUAGE plpgsql;',
+    '',
+    '-- Step 2: Add new columns to users table (team management + profiles)',
+    ...MIGRATION_SQL.filter(s => s.includes('users')).map(s => s + ';'),
+    '',
+    '-- Step 3: Add new columns to kyc table (phone + company profiles)',
+    ...MIGRATION_SQL.filter(s => s.includes('kyc')).map(s => s + ';'),
+    '',
+    '-- Step 4: Create company_profiles table',
+    NEW_TABLES_SQL.trim(),
+    '',
+    '-- Done! Refresh the Team page to verify.',
+  ];
+  return lines.join('\n');
 }
 
 // ==================== USERS ====================
