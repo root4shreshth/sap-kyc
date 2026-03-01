@@ -1,6 +1,7 @@
 'use client';
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useParams } from 'next/navigation';
 import { AuthProvider } from '@/components/AuthProvider';
 import ProtectedLayout from '@/components/ProtectedLayout';
 import { teamApi } from '@/lib/api-client';
@@ -324,11 +325,11 @@ function MemberDetail({ id }) {
   );
 }
 
-function MemberDetailWrapper({ params }) {
-  const { id } = use(params);
+function MemberDetailWrapper() {
+  const { id } = useParams();
   return <MemberDetail id={id} />;
 }
 
-export default function TeamMemberPage({ params }) {
-  return <AuthProvider><MemberDetailWrapper params={params} /></AuthProvider>;
+export default function TeamMemberPage() {
+  return <AuthProvider><MemberDetailWrapper /></AuthProvider>;
 }
