@@ -248,13 +248,31 @@ function TeamContent() {
                 </tr>
               </thead>
               <tbody>
-                {members.map(m => (
+                {members.map(m => {
+                  const initials = (m.name || m.email).slice(0, 2).toUpperCase();
+                  return (
                   <tr key={m.id}>
                     <td style={{ paddingLeft: 20 }}>
-                      <div style={{ fontWeight: 500 }}>{m.name || m.email}</div>
-                      <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>
-                        {m.name ? m.email : ''}
-                        {m.designation && <span>{m.name ? ' · ' : ''}{m.designation}</span>}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        {m.avatarUrl ? (
+                          <img src={m.avatarUrl} alt="" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                        ) : (
+                          <div style={{
+                            width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                            background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            color: 'white', fontSize: 12, fontWeight: 700,
+                          }}>
+                            {initials}
+                          </div>
+                        )}
+                        <div>
+                          <div style={{ fontWeight: 500 }}>{m.name || m.email}</div>
+                          <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>
+                            {m.name ? m.email : ''}
+                            {m.designation && <span>{m.name ? ' · ' : ''}{m.designation}</span>}
+                          </div>
+                        </div>
                       </div>
                     </td>
                     <td>
@@ -308,7 +326,8 @@ function TeamContent() {
                       </Link>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

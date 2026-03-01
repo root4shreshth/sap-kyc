@@ -25,6 +25,7 @@ const MIGRATION_SQL = [
   "ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_name TEXT DEFAULT ''",
   "ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_phone TEXT DEFAULT ''",
   "ALTER TABLE users ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT ''",
   // KYC table columns
   "ALTER TABLE kyc ADD COLUMN IF NOT EXISTS company_profile_id UUID",
   "ALTER TABLE kyc ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT ''",
@@ -179,6 +180,7 @@ export async function getAllUsers() {
     createdAt: row.created_at,
     designation: row.designation || '',
     department: row.department || '',
+    avatarUrl: row.avatar_url || '',
   }));
 }
 
@@ -211,6 +213,7 @@ export async function getUserById(id) {
     emergencyContactName: data.emergency_contact_name || '',
     emergencyContactPhone: data.emergency_contact_phone || '',
     notes: data.notes || '',
+    avatarUrl: data.avatar_url || '',
   };
 }
 
@@ -233,6 +236,7 @@ export async function updateUser(id, fields) {
   if (fields.emergencyContactName !== undefined) updateData.emergency_contact_name = fields.emergencyContactName;
   if (fields.emergencyContactPhone !== undefined) updateData.emergency_contact_phone = fields.emergencyContactPhone;
   if (fields.notes !== undefined) updateData.notes = fields.notes;
+  if (fields.avatarUrl !== undefined) updateData.avatar_url = fields.avatarUrl;
 
   if (Object.keys(updateData).length === 0) return;
 

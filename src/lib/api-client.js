@@ -74,6 +74,19 @@ export const teamApi = {
       headers: getHeaders(),
       body: JSON.stringify(data),
     }).then(handleResponse),
+  uploadAvatar: async (id, file) => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const headers = {};
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(`/api/team/${id}/upload-avatar`, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    return handleResponse(res);
+  },
 };
 
 export const kycApi = {

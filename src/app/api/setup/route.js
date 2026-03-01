@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
   can_send_kyc    BOOLEAN DEFAULT FALSE,
   created_by_admin TEXT DEFAULT '',
   last_login_at   TIMESTAMPTZ,
+  avatar_url      TEXT DEFAULT '',
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -316,6 +317,7 @@ const MIGRATION_STATEMENTS = [
   "ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_name TEXT DEFAULT ''",
   "ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_phone TEXT DEFAULT ''",
   "ALTER TABLE users ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT ''",
   // KYC table columns
   "ALTER TABLE kyc ADD COLUMN IF NOT EXISTS company_profile_id UUID",
   "ALTER TABLE kyc ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT ''",

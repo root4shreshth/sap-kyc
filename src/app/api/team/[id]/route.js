@@ -77,6 +77,7 @@ export async function PATCH(request, { params }) {
     if (body.emergencyContactName !== undefined) updates.emergencyContactName = body.emergencyContactName;
     if (body.emergencyContactPhone !== undefined) updates.emergencyContactPhone = body.emergencyContactPhone;
     if (body.notes !== undefined) updates.notes = body.notes;
+    if (body.avatarUrl !== undefined) updates.avatarUrl = body.avatarUrl;
 
     await updateUser(id, updates);
 
