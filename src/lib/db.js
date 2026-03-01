@@ -12,6 +12,17 @@ const MIGRATION_SQL = [
   "ALTER TABLE users ADD COLUMN IF NOT EXISTS can_send_kyc BOOLEAN DEFAULT FALSE",
   "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_by_admin TEXT DEFAULT ''",
   "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ",
+  // Employee profile fields
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS designation TEXT DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS department TEXT DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS employee_id TEXT DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS date_of_joining TEXT DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_name TEXT DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact_phone TEXT DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS notes TEXT DEFAULT ''",
+  // KYC table columns
   "ALTER TABLE kyc ADD COLUMN IF NOT EXISTS company_profile_id UUID",
   "ALTER TABLE kyc ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT ''",
   "ALTER TABLE kyc ADD COLUMN IF NOT EXISTS phone_country_code TEXT DEFAULT ''",
@@ -120,6 +131,8 @@ export async function getAllUsers() {
     createdByAdmin: row.created_by_admin || '',
     lastLoginAt: row.last_login_at || null,
     createdAt: row.created_at,
+    designation: row.designation || '',
+    department: row.department || '',
   }));
 }
 
@@ -142,6 +155,16 @@ export async function getUserById(id) {
     createdByAdmin: data.created_by_admin || '',
     lastLoginAt: data.last_login_at || null,
     createdAt: data.created_at,
+    // Employee profile fields
+    phone: data.phone || '',
+    designation: data.designation || '',
+    department: data.department || '',
+    employeeId: data.employee_id || '',
+    dateOfJoining: data.date_of_joining || '',
+    address: data.address || '',
+    emergencyContactName: data.emergency_contact_name || '',
+    emergencyContactPhone: data.emergency_contact_phone || '',
+    notes: data.notes || '',
   };
 }
 
@@ -154,6 +177,16 @@ export async function updateUser(id, fields) {
   if (fields.canSendKyc !== undefined) updateData.can_send_kyc = fields.canSendKyc;
   if (fields.passwordHash !== undefined) updateData.password_hash = fields.passwordHash;
   if (fields.lastLoginAt !== undefined) updateData.last_login_at = fields.lastLoginAt;
+  // Employee profile fields
+  if (fields.phone !== undefined) updateData.phone = fields.phone;
+  if (fields.designation !== undefined) updateData.designation = fields.designation;
+  if (fields.department !== undefined) updateData.department = fields.department;
+  if (fields.employeeId !== undefined) updateData.employee_id = fields.employeeId;
+  if (fields.dateOfJoining !== undefined) updateData.date_of_joining = fields.dateOfJoining;
+  if (fields.address !== undefined) updateData.address = fields.address;
+  if (fields.emergencyContactName !== undefined) updateData.emergency_contact_name = fields.emergencyContactName;
+  if (fields.emergencyContactPhone !== undefined) updateData.emergency_contact_phone = fields.emergencyContactPhone;
+  if (fields.notes !== undefined) updateData.notes = fields.notes;
 
   if (Object.keys(updateData).length === 0) return;
 
@@ -338,7 +371,21 @@ export async function createKyc({ id, clientName, companyName, email, tokenHash,
     .insert(insertData)
     .select()
     .single();
-  if (error) throw error;
+
+  if (error) {
+    // If columns don't exist (DB not migrated), retry with core columns only
+    const isColumnError = error.message?.includes('column') || error.code === 'PGRST204' || error.code === '42703';
+    if (isColumnError) {
+      console.warn('createKyc: optional columns missing, falling back to core columns only.');
+      const coreData = { id, client_name: clientName, company_name: companyName, email,
+        token_hash: tokenHash, token_expiry: tokenExpiry, status: status || 'Pending',
+        remarks: remarks || '', created_by: createdBy };
+      const { data: fallbackData, error: fallbackErr } = await supabase.from('kyc').insert(coreData).select().single();
+      if (fallbackErr) throw fallbackErr;
+      return fallbackData;
+    }
+    throw error;
+  }
 
   // Sync to Google Sheets (fire-and-forget)
   syncKycToSheet({ id, clientName, companyName, email, status: status || 'Pending', remarks: remarks || '', createdBy, createdAt: data.created_at, updatedAt: data.updated_at }).catch(() => {});

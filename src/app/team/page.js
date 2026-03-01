@@ -132,8 +132,11 @@ function TeamContent() {
                 {members.map(m => (
                   <tr key={m.id}>
                     <td style={{ paddingLeft: 20 }}>
-                      <div style={{ fontWeight: 500 }}>{m.name || '(no name)'}</div>
-                      <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>{m.email}</div>
+                      <div style={{ fontWeight: 500 }}>{m.name || m.email}</div>
+                      <div style={{ fontSize: 12, color: 'var(--gray-400)' }}>
+                        {m.name ? m.email : ''}
+                        {m.designation && <span>{m.name ? ' · ' : ''}{m.designation}</span>}
+                      </div>
                     </td>
                     <td>
                       <span className={`badge ${m.role === 'Admin' ? 'badge-approved' : 'badge-pending'}`}>

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { requireAuth, isValidEmail } from '@/lib/auth';
-import { createKyc, createAuditEntry, getCompanyProfileById, createMessageLog } from '@/lib/db';
+import { createKyc, createAuditEntry, getCompanyProfileById, createMessageLog, ensureMigration } from '@/lib/db';
 import { generateToken, hashToken } from '@/lib/token';
 import { sendKycInvite, isSmtpConfigured } from '@/lib/email';
 import { sendWhatsAppMessage, buildKycInviteMessage, isWhatsAppConfigured } from '@/lib/whatsapp';
@@ -11,6 +11,7 @@ export async function POST(request) {
   if (error) return error;
 
   try {
+    await ensureMigration();
     const { clientName, companyName, email, ccEmail, companyProfileId, phone, phoneCountryCode } = await request.json();
     if (!clientName || !companyName || !email) {
       return NextResponse.json({ error: 'clientName, companyName, email required' }, { status: 400 });
@@ -80,6 +81,6 @@ export async function POST(request) {
     return NextResponse.json(response);
   } catch (err) {
     console.error('Create KYC error:', err);
-    return NextResponse.json({ error: 'Failed to create KYC request' }, { status: 500 });
+    return NextResponse.json({ error: `Failed to create KYC request: ${err.message || 'Unknown error'}` }, { status: 500 });
   }
 }

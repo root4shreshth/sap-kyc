@@ -60,6 +60,16 @@ export async function PATCH(request, { params }) {
       }
       updates.passwordHash = await bcrypt.hash(body.password, 10);
     }
+    // Employee profile fields
+    if (body.phone !== undefined) updates.phone = body.phone;
+    if (body.designation !== undefined) updates.designation = body.designation;
+    if (body.department !== undefined) updates.department = body.department;
+    if (body.employeeId !== undefined) updates.employeeId = body.employeeId;
+    if (body.dateOfJoining !== undefined) updates.dateOfJoining = body.dateOfJoining;
+    if (body.address !== undefined) updates.address = body.address;
+    if (body.emergencyContactName !== undefined) updates.emergencyContactName = body.emergencyContactName;
+    if (body.emergencyContactPhone !== undefined) updates.emergencyContactPhone = body.emergencyContactPhone;
+    if (body.notes !== undefined) updates.notes = body.notes;
 
     await updateUser(id, updates);
 
