@@ -25,7 +25,7 @@ export async function GET(request) {
     return NextResponse.json(enriched);
   } catch (err) {
     console.error('List team error:', err);
-    return NextResponse.json({ error: 'Failed to fetch team members' }, { status: 500 });
+    return NextResponse.json({ error: `Failed to fetch team members: ${err.message || 'Unknown error'}` }, { status: 500 });
   }
 }
 
@@ -75,6 +75,6 @@ export async function POST(request) {
       return NextResponse.json({ error: 'A user with this email already exists' }, { status: 409 });
     }
     console.error('Create team member error:', err);
-    return NextResponse.json({ error: 'Failed to create team member' }, { status: 500 });
+    return NextResponse.json({ error: `Failed to create team member: ${err.message || 'Unknown error'}` }, { status: 500 });
   }
 }

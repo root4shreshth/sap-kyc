@@ -11,7 +11,11 @@ export async function GET(request) {
     return NextResponse.json(profiles);
   } catch (err) {
     console.error('List company profiles error:', err);
-    return NextResponse.json({ error: 'Failed to fetch company profiles' }, { status: 500 });
+    // If table doesn't exist yet, return empty array gracefully
+    if (err.message?.includes('does not exist')) {
+      return NextResponse.json([]);
+    }
+    return NextResponse.json({ error: `Failed to fetch company profiles: ${err.message || 'Unknown error'}` }, { status: 500 });
   }
 }
 
@@ -34,6 +38,9 @@ export async function POST(request) {
     return NextResponse.json(profile);
   } catch (err) {
     console.error('Create company profile error:', err);
-    return NextResponse.json({ error: 'Failed to create company profile' }, { status: 500 });
+    const msg = err.message?.includes('does not exist')
+      ? 'Company profiles table not found. Please run database setup first (POST /api/setup).'
+      : `Failed to create company profile: ${err.message || 'Unknown error'}`;
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

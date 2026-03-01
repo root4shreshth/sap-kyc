@@ -318,49 +318,75 @@ const ALL_TABLES = [
   'kyc_regulatory_compliance', 'kyc_social_media_reviews', 'kyc_warehouse_addresses', 'kyc_compliance_results',
 ];
 
+// SQL to create the exec_sql helper function (needed for running DDL via API)
+const EXEC_SQL_FUNCTION = `
+CREATE OR REPLACE FUNCTION exec_sql(query TEXT) RETURNS VOID AS $$
+BEGIN EXECUTE query; END;
+$$ LANGUAGE plpgsql;
+`;
+
+// Full SQL block for manual execution in Supabase SQL Editor
+function getFullSetupSql() {
+  return EXEC_SQL_FUNCTION + '\n' + SCHEMA_SQL + '\n' + MIGRATION_STATEMENTS.join(';\n') + ';';
+}
+
+// GET: Check migration status without modifying anything
+export async function GET() {
+  try {
+    const supabase = getSupabase();
+    const status = { tables: {}, execSqlAvailable: false };
+
+    // Check if exec_sql function exists
+    const { error: rpcErr } = await supabase.rpc('exec_sql', { query: 'SELECT 1' });
+    status.execSqlAvailable = !rpcErr;
+
+    // Check which tables exist
+    for (const table of ALL_TABLES) {
+      const { error } = await supabase.from(table).select('*').limit(0);
+      status.tables[table] = error ? 'missing' : 'exists';
+    }
+
+    const missing = Object.entries(status.tables).filter(([, v]) => v === 'missing');
+
+    return NextResponse.json({
+      message: missing.length > 0
+        ? `${missing.length} table(s) missing. Run POST /api/setup to create them.`
+        : 'All tables exist.',
+      ...status,
+      sql: missing.length > 0 ? getFullSetupSql() : undefined,
+    });
+  } catch (err) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
 export async function POST() {
   try {
     const supabase = getSupabase();
-    const results = { tables: {}, storage: '' };
+    const results = { tables: {}, storage: '', execSqlAvailable: false };
 
-    // Create tables via raw SQL using Supabase's rpc
-    const { error: sqlError } = await supabase.rpc('exec_sql', { query: SCHEMA_SQL });
+    // Step 1: Try to create/ensure exec_sql function exists
+    const { error: funcErr } = await supabase.rpc('exec_sql', { query: 'SELECT 1' });
+    results.execSqlAvailable = !funcErr;
 
-    if (sqlError) {
-      // RPC not available — check tables individually via REST
-      for (const table of ALL_TABLES) {
-        const { error } = await supabase.from(table).select('*').limit(0);
-        results.tables[table] = error ? 'missing' : 'exists';
-      }
+    // Step 2: If exec_sql available, run full schema + migrations
+    if (results.execSqlAvailable) {
+      // Create tables
+      const { error: schemaErr } = await supabase.rpc('exec_sql', { query: SCHEMA_SQL });
+      results.schemaRun = schemaErr ? `error: ${schemaErr.message}` : 'ok';
 
-      // If any tables missing, return SQL for manual execution
-      const missing = Object.entries(results.tables).filter(([, v]) => v === 'missing');
-      if (missing.length > 0) {
-        try {
-          await ensureBucket();
-          results.storage = 'kyc-documents bucket ready';
-        } catch (e) {
-          results.storage = `Bucket error: ${e.message}`;
-        }
-
-        return NextResponse.json({
-          message: 'Some tables are missing. Please run the SQL below in your Supabase SQL Editor.',
-          tables: results.tables,
-          storage: results.storage,
-          sql: SCHEMA_SQL,
-          migrationSql: MIGRATION_STATEMENTS.join(';\n') + ';',
+      // Run migration statements (add columns to existing tables)
+      results.migrations = [];
+      for (const stmt of MIGRATION_STATEMENTS) {
+        const { error: migErr } = await supabase.rpc('exec_sql', { query: stmt });
+        results.migrations.push({
+          sql: stmt.slice(0, 60) + '...',
+          status: migErr ? `error: ${migErr.message}` : 'ok',
         });
       }
     }
 
-    // Run migration statements (add columns to existing tables)
-    results.migrations = [];
-    for (const stmt of MIGRATION_STATEMENTS) {
-      const { error: migErr } = await supabase.rpc('exec_sql', { query: stmt });
-      results.migrations.push({ sql: stmt.slice(0, 60) + '...', status: migErr ? `skipped: ${migErr.message}` : 'ok' });
-    }
-
-    // Ensure storage bucket exists
+    // Step 3: Ensure storage bucket
     try {
       await ensureBucket();
       results.storage = 'kyc-documents bucket ready';
@@ -368,14 +394,27 @@ export async function POST() {
       results.storage = `Bucket error: ${e.message}`;
     }
 
-    // Verify all tables
+    // Step 4: Verify all tables
     for (const table of ALL_TABLES) {
       const { error } = await supabase.from(table).select('*').limit(0);
-      results.tables[table] = error ? 'error' : 'ready';
+      results.tables[table] = error ? 'missing' : 'ready';
+    }
+
+    const missing = Object.entries(results.tables).filter(([, v]) => v === 'missing');
+
+    // If exec_sql not available or tables still missing, include manual SQL
+    if (!results.execSqlAvailable || missing.length > 0) {
+      return NextResponse.json({
+        message: !results.execSqlAvailable
+          ? 'The exec_sql function is not available in your Supabase instance. Please copy the SQL below and run it in your Supabase SQL Editor (supabase.com → SQL Editor → New Query → Paste & Run).'
+          : `Setup ran but ${missing.length} table(s) are still missing. Please run the SQL below in your Supabase SQL Editor.`,
+        ...results,
+        sql: getFullSetupSql(),
+      });
     }
 
     return NextResponse.json({
-      message: 'Setup complete',
+      message: 'Setup complete — all tables ready.',
       ...results,
     });
   } catch (err) {

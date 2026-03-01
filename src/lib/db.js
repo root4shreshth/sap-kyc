@@ -25,7 +25,22 @@ export async function createUser({ email, passwordHash, role, name, canSendKyc, 
     .insert(insertData)
     .select()
     .single();
-  if (error) throw error;
+
+  if (error) {
+    // If error is about unknown columns (DB not migrated), retry with core columns only
+    const isColumnError = error.message?.includes('column') || error.code === 'PGRST204' || error.code === '42703';
+    if (isColumnError) {
+      console.warn('createUser: optional columns missing, falling back to core columns only. Run POST /api/setup to migrate.');
+      const { data: fallbackData, error: fallbackErr } = await supabase
+        .from('users')
+        .insert({ email, password_hash: passwordHash, role })
+        .select()
+        .single();
+      if (fallbackErr) throw fallbackErr;
+      return fallbackData;
+    }
+    throw error;
+  }
   return data;
 }
 
