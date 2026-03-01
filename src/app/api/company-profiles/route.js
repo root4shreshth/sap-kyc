@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getAllCompanyProfiles, createCompanyProfile } from '@/lib/db';
+import { getAllCompanyProfiles, createCompanyProfile, ensureMigration } from '@/lib/db';
 
 export async function GET(request) {
   const { user, error } = requireAuth(request);
   if (error) return error;
 
   try {
+    await ensureMigration();
     const profiles = await getAllCompanyProfiles();
     return NextResponse.json(profiles);
   } catch (err) {

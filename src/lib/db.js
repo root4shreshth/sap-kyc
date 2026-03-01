@@ -1,6 +1,65 @@
 import { getSupabase } from './supabase';
 import { syncKycToSheet, syncFormDataToSheet, syncComplianceToSheet, syncDocToSheet, syncAuditToSheet } from './google-sheets';
 
+// ==================== AUTO-MIGRATION ====================
+// Attempts to add missing columns/tables on first call. Runs once per server lifecycle.
+
+let _migrationAttempted = false;
+
+const MIGRATION_SQL = [
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS name TEXT DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE",
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS can_send_kyc BOOLEAN DEFAULT FALSE",
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_by_admin TEXT DEFAULT ''",
+  "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ",
+  "ALTER TABLE kyc ADD COLUMN IF NOT EXISTS company_profile_id UUID",
+  "ALTER TABLE kyc ADD COLUMN IF NOT EXISTS phone TEXT DEFAULT ''",
+  "ALTER TABLE kyc ADD COLUMN IF NOT EXISTS phone_country_code TEXT DEFAULT ''",
+];
+
+const NEW_TABLES_SQL = `
+CREATE TABLE IF NOT EXISTS company_profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL, short_name TEXT NOT NULL, logo_url TEXT DEFAULT '',
+  email_sender_name TEXT NOT NULL, address TEXT DEFAULT '', phone TEXT DEFAULT '',
+  website TEXT DEFAULT '', footer_text TEXT DEFAULT '', primary_color TEXT DEFAULT '#2563eb',
+  is_default BOOLEAN DEFAULT FALSE, is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS message_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  kyc_id UUID, channel TEXT NOT NULL, recipient TEXT NOT NULL,
+  message_type TEXT NOT NULL, status TEXT DEFAULT 'sent', error_message TEXT DEFAULT '',
+  metadata JSONB DEFAULT '{}', created_at TIMESTAMPTZ DEFAULT NOW()
+);
+`;
+
+export async function ensureMigration() {
+  if (_migrationAttempted) return;
+  _migrationAttempted = true;
+
+  try {
+    const supabase = getSupabase();
+    // Quick check: try selecting an optional column
+    const { error: testErr } = await supabase.from('users').select('name').limit(0);
+    if (!testErr) return; // columns exist, no migration needed
+
+    console.log('Auto-migration: detected missing columns, attempting migration via exec_sql...');
+
+    // Try creating new tables first
+    await supabase.rpc('exec_sql', { query: NEW_TABLES_SQL }).catch(() => {});
+
+    // Then add columns
+    for (const sql of MIGRATION_SQL) {
+      await supabase.rpc('exec_sql', { query: sql }).catch(() => {});
+    }
+
+    console.log('Auto-migration: done.');
+  } catch (err) {
+    console.warn('Auto-migration: could not run automatically.', err.message);
+  }
+}
+
 // ==================== USERS ====================
 
 export async function getUserByEmail(email) {
@@ -95,11 +154,29 @@ export async function updateUser(id, fields) {
   if (fields.canSendKyc !== undefined) updateData.can_send_kyc = fields.canSendKyc;
   if (fields.passwordHash !== undefined) updateData.password_hash = fields.passwordHash;
   if (fields.lastLoginAt !== undefined) updateData.last_login_at = fields.lastLoginAt;
+
+  if (Object.keys(updateData).length === 0) return;
+
   const { error } = await supabase
     .from('users')
     .update(updateData)
     .eq('id', id);
-  if (error) throw error;
+
+  if (error) {
+    // If columns don't exist (DB not migrated), retry with only core columns
+    const isColumnError = error.message?.includes('column') || error.code === 'PGRST204' || error.code === '42703';
+    if (isColumnError) {
+      console.warn('updateUser: optional columns missing, falling back to core columns only.');
+      const coreData = {};
+      if (fields.role !== undefined) coreData.role = fields.role;
+      if (fields.passwordHash !== undefined) coreData.password_hash = fields.passwordHash;
+      if (Object.keys(coreData).length === 0) return; // nothing to update with core columns
+      const { error: fallbackErr } = await supabase.from('users').update(coreData).eq('id', id);
+      if (fallbackErr) throw fallbackErr;
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function getUserActivity(email, limit = 20) {
@@ -133,6 +210,10 @@ export async function getTeamStats() {
       statsMap[row.actor] = { email: row.actor, kycCreated: 0, kycApproved: 0, kycRejected: 0, lastAction: row.timestamp };
     }
     if (row.action === 'KYC_CREATED') statsMap[row.actor].kycCreated++;
+    // Match actual audit action names: KYC_STATUS_APPROVED, KYC_STATUS_REJECTED
+    if (row.action === 'KYC_STATUS_APPROVED') statsMap[row.actor].kycApproved++;
+    if (row.action === 'KYC_STATUS_REJECTED') statsMap[row.actor].kycRejected++;
+    // Also match legacy format just in case
     if (row.action === 'STATUS_CHANGED' && row.details?.includes?.('Approved')) statsMap[row.actor].kycApproved++;
     if (row.action === 'STATUS_CHANGED' && row.details?.includes?.('Rejected')) statsMap[row.actor].kycRejected++;
   });

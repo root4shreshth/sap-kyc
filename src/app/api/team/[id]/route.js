@@ -1,23 +1,38 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { requireAuth } from '@/lib/auth';
-import { getUserById, updateUser, getUserActivity, createAuditEntry } from '@/lib/db';
+import { getUserById, updateUser, getUserActivity, getTeamStats, createAuditEntry, ensureMigration } from '@/lib/db';
 
 export async function GET(request, { params }) {
   const { user, error } = requireAuth(request, ['Admin']);
   if (error) return error;
 
   try {
+    await ensureMigration();
     const { id } = await params;
     const member = await getUserById(id);
     if (!member) return NextResponse.json({ error: 'Member not found' }, { status: 404 });
 
-    const activity = await getUserActivity(member.email, 30);
+    // Fetch activity + performance stats in parallel
+    const [activity, allStats] = await Promise.all([
+      getUserActivity(member.email, 30),
+      getTeamStats(),
+    ]);
 
-    return NextResponse.json({ ...member, activity });
+    // Find this member's stats
+    const stats = allStats.find(s => s.email === member.email) || {};
+
+    return NextResponse.json({
+      ...member,
+      activity,
+      kycCreated: stats.kycCreated || 0,
+      kycApproved: stats.kycApproved || 0,
+      kycRejected: stats.kycRejected || 0,
+      lastAction: stats.lastAction || null,
+    });
   } catch (err) {
     console.error('Get team member error:', err);
-    return NextResponse.json({ error: 'Failed to fetch member' }, { status: 500 });
+    return NextResponse.json({ error: `Failed to fetch member: ${err.message || 'Unknown error'}` }, { status: 500 });
   }
 }
 
@@ -57,6 +72,6 @@ export async function PATCH(request, { params }) {
     return NextResponse.json({ message: 'Member updated' });
   } catch (err) {
     console.error('Update team member error:', err);
-    return NextResponse.json({ error: 'Failed to update member' }, { status: 500 });
+    return NextResponse.json({ error: `Failed to update member: ${err.message || 'Unknown error'}` }, { status: 500 });
   }
 }

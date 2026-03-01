@@ -1,13 +1,16 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { requireAuth, isValidEmail } from '@/lib/auth';
-import { getAllUsers, createUser, createAuditEntry, getTeamStats } from '@/lib/db';
+import { getAllUsers, createUser, createAuditEntry, getTeamStats, ensureMigration } from '@/lib/db';
 
 export async function GET(request) {
   const { user, error } = requireAuth(request, ['Admin']);
   if (error) return error;
 
   try {
+    // Auto-migrate DB on first team page load
+    await ensureMigration();
+
     const [users, stats] = await Promise.all([getAllUsers(), getTeamStats()]);
 
     // Merge stats into user records
