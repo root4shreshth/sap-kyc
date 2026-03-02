@@ -1,21 +1,33 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { AuthProvider, useAuth } from '@/components/AuthProvider';
 import { authApi } from '@/lib/api-client';
 
 function LoginForm() {
-  const { user, login } = useAuth();
+  const { user, loading: authLoading, login } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  if (user) {
-    router.push('/dashboard');
-    return null;
+  // Redirect to dashboard if already logged in (must be in useEffect, not during render)
+  useEffect(() => {
+    if (user) {
+      router.push('/dashboard');
+    }
+  }, [user, router]);
+
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--gray-100)' }}>
+        <p style={{ color: 'var(--gray-400)' }}>Loading...</p>
+      </div>
+    );
   }
+
+  if (user) return null;
 
   async function doLogin(em, pw) {
     setError('');

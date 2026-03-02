@@ -11,6 +11,6 @@ export async function GET(request) {
     return NextResponse.json(rows);
   } catch (err) {
     console.error('List error:', err);
-    return NextResponse.json({ error: 'Failed to fetch list' }, { status: 500 });
+    return NextResponse.json({ error: `Failed to fetch list: ${err.message || 'Unknown error'}` }, { status: 500 });
   }
 }

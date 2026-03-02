@@ -39,7 +39,10 @@ function DashboardContent() {
         setStats(s);
         setRows(r);
       })
-      .catch((e) => setError(e.message))
+      .catch((e) => {
+        console.error('Dashboard load error:', e);
+        setError(e.message);
+      })
       .finally(() => setLoading(false));
   }, []);
 
