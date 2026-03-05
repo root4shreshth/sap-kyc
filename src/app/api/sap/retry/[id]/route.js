@@ -17,10 +17,9 @@ export async function POST(request, { params }) {
     }
 
     if (!isSapConfigured()) {
-      return NextResponse.json({ error: 'SAP integration is not configured. Add SAP_BASE_URL, SAP_COMPANY_DB, SAP_USERNAME, SAP_PASSWORD to environment.' }, { status: 500 });
+      return NextResponse.json({ error: 'SAP integration is not configured.' }, { status: 500 });
     }
 
-    // Get KYC record
     const kyc = await getKycById(id);
     if (!kyc) {
       return NextResponse.json({ error: 'KYC request not found' }, { status: 404 });
@@ -31,25 +30,20 @@ export async function POST(request, { params }) {
     }
 
     if (kyc.sapCardCode) {
-      return NextResponse.json({ error: `Already pushed to SAP as ${kyc.sapCardCode}. Use a different endpoint to update.` }, { status: 409 });
+      return NextResponse.json({ error: `Already synced as ${kyc.sapCardCode}` }, { status: 409 });
     }
 
-    // Get form data
     const formData = await getKycFormData(id);
     if (!formData || Object.keys(formData).length === 0) {
-      return NextResponse.json({ error: 'No form data found for this KYC' }, { status: 400 });
+      return NextResponse.json({ error: 'No form data found' }, { status: 400 });
     }
 
-    // Validate minimum required fields
     const validation = validateForSapPush(formData);
     if (!validation.valid) {
-      return NextResponse.json({ error: `Missing required fields: ${validation.errors.join(', ')}` }, { status: 400 });
+      return NextResponse.json({ error: `Missing fields: ${validation.errors.join(', ')}` }, { status: 400 });
     }
 
-    // Map KYC data to SAP Business Partner structure
     const bpPayload = mapKycToBusinessPartner(formData, kyc, bpType);
-
-    console.log('[SAP Push] Creating BP for KYC:', id, 'Type:', bpType, 'CardCode:', bpPayload.CardCode);
 
     // Create sync log entry
     const syncLog = await createSapSyncLog({
@@ -63,17 +57,50 @@ export async function POST(request, { params }) {
 
     const startTime = Date.now();
 
-    // Execute SAP push with auto session management
-    let sapResult;
     try {
-      sapResult = await withSapSession(async (cookies) => {
+      const sapResult = await withSapSession(async (cookies) => {
         return await createBusinessPartner(bpPayload, cookies);
+      });
+
+      const duration = Date.now() - startTime;
+      const cardCode = sapResult?.CardCode || bpPayload.CardCode;
+      const now = new Date().toISOString();
+
+      // Update KYC record
+      await updateKycSapStatus(id, {
+        sapCardCode: cardCode,
+        sapBpType: bpType,
+        sapSyncedAt: now,
+        sapSyncError: '',
+      });
+
+      // Update sync log
+      if (syncLog) {
+        await updateSapSyncLog(syncLog.id, {
+          status: 'success',
+          cardCode,
+          responseData: sapResult || {},
+          duration,
+        });
+      }
+
+      await createAuditEntry({
+        action: 'SAP_BP_CREATED',
+        actor: user.email,
+        kycId: id,
+        details: `Business Partner ${cardCode} created as ${bpType} (retry)`,
+      });
+
+      return NextResponse.json({
+        success: true,
+        cardCode,
+        bpType,
+        durationMs: duration,
+        message: `Business Partner ${cardCode} created in SAP`,
       });
     } catch (sapErr) {
       const duration = Date.now() - startTime;
-      console.error('[SAP Push] SAP error:', sapErr.message);
 
-      // Store the error in DB for visibility
       await updateKycSapStatus(id, {
         sapCardCode: '',
         sapBpType: bpType,
@@ -81,7 +108,6 @@ export async function POST(request, { params }) {
         sapSyncError: sapErr.message,
       });
 
-      // Update sync log
       if (syncLog) {
         await updateSapSyncLog(syncLog.id, {
           status: 'failed',
@@ -94,50 +120,11 @@ export async function POST(request, { params }) {
       return NextResponse.json({
         error: `SAP Error: ${sapErr.message}`,
         sapError: sapErr.sapError || null,
+        durationMs: duration,
       }, { status: 502 });
     }
-
-    // Success — store SAP details
-    const duration = Date.now() - startTime;
-    const cardCode = sapResult?.CardCode || bpPayload.CardCode;
-    const now = new Date().toISOString();
-
-    await updateKycSapStatus(id, {
-      sapCardCode: cardCode,
-      sapBpType: bpType,
-      sapSyncedAt: now,
-      sapSyncError: '',
-    });
-
-    // Update sync log
-    if (syncLog) {
-      await updateSapSyncLog(syncLog.id, {
-        status: 'success',
-        cardCode,
-        responseData: sapResult || {},
-        duration,
-      });
-    }
-
-    // Audit log
-    await createAuditEntry({
-      action: 'SAP_BP_CREATED',
-      actor: user.email,
-      kycId: id,
-      details: `Business Partner ${cardCode} created as ${bpType}`,
-    });
-
-    console.log('[SAP Push] Success! CardCode:', cardCode);
-
-    return NextResponse.json({
-      success: true,
-      cardCode,
-      bpType,
-      durationMs: duration,
-      message: `Business Partner ${cardCode} created in SAP as ${bpType === 'customer' ? 'Customer' : 'Vendor'}`,
-    });
   } catch (err) {
-    console.error('[SAP Push] Unexpected error:', err);
-    return NextResponse.json({ error: err.message || 'Failed to push to SAP' }, { status: 500 });
+    console.error('SAP retry error:', err);
+    return NextResponse.json({ error: err.message || 'Failed to retry SAP push' }, { status: 500 });
   }
 }

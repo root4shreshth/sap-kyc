@@ -47,6 +47,20 @@ CREATE TABLE IF NOT EXISTS message_log (
   message_type TEXT NOT NULL, status TEXT DEFAULT 'sent', error_message TEXT DEFAULT '',
   metadata JSONB DEFAULT '{}', created_at TIMESTAMPTZ DEFAULT NOW()
 );
+CREATE TABLE IF NOT EXISTS sap_sync_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  kyc_id UUID REFERENCES kyc(id),
+  card_code TEXT DEFAULT '',
+  bp_type TEXT DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'success', 'failed')),
+  request_payload JSONB DEFAULT '{}',
+  response_data JSONB DEFAULT '{}',
+  error_message TEXT DEFAULT '',
+  triggered_by TEXT DEFAULT '',
+  duration_ms INTEGER,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 `;
 
 export async function ensureMigration(forceRecheck = false) {
@@ -1030,6 +1044,107 @@ export async function createMessageLog({ kycId, channel, recipient, messageType,
       metadata: metadata || {},
     });
   if (error) throw error;
+}
+
+// ==================== SAP SYNC LOG ====================
+
+export async function createSapSyncLog({ kycId, cardCode, bpType, status, requestPayload, responseData, errorMessage, triggeredBy }) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('sap_sync_log')
+    .insert({
+      kyc_id: kycId,
+      card_code: cardCode || '',
+      bp_type: bpType || '',
+      status: status || 'pending',
+      request_payload: requestPayload || {},
+      response_data: responseData || {},
+      error_message: errorMessage || '',
+      triggered_by: triggeredBy || '',
+    })
+    .select()
+    .single();
+  if (error) {
+    // Table might not exist yet - log and continue
+    console.warn('createSapSyncLog: table may not exist yet.', error.message);
+    return null;
+  }
+  return data;
+}
+
+export async function updateSapSyncLog(logId, { status, cardCode, responseData, errorMessage, duration }) {
+  const supabase = getSupabase();
+  const updateData = { updated_at: new Date().toISOString() };
+  if (status !== undefined) updateData.status = status;
+  if (cardCode !== undefined) updateData.card_code = cardCode;
+  if (responseData !== undefined) updateData.response_data = responseData;
+  if (errorMessage !== undefined) updateData.error_message = errorMessage;
+  if (duration !== undefined) updateData.duration_ms = duration;
+  const { error } = await supabase
+    .from('sap_sync_log')
+    .update(updateData)
+    .eq('id', logId);
+  if (error) console.warn('updateSapSyncLog error:', error.message);
+}
+
+export async function getAllSapSyncLogs(limit = 100) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('sap_sync_log')
+    .select('*, kyc:kyc_id(client_name, company_name, email, status)')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) {
+    // Table might not exist
+    if (error.message?.includes('does not exist')) return [];
+    throw error;
+  }
+  return (data || []).map(row => ({
+    id: row.id,
+    kycId: row.kyc_id,
+    cardCode: row.card_code || '',
+    bpType: row.bp_type || '',
+    status: row.status,
+    requestPayload: row.request_payload || {},
+    responseData: row.response_data || {},
+    errorMessage: row.error_message || '',
+    triggeredBy: row.triggered_by || '',
+    durationMs: row.duration_ms || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    // Joined KYC data
+    clientName: row.kyc?.client_name || '',
+    companyName: row.kyc?.company_name || '',
+    kycEmail: row.kyc?.email || '',
+    kycStatus: row.kyc?.status || '',
+  }));
+}
+
+export async function getSapSyncStats() {
+  const supabase = getSupabase();
+  // Get all KYC records with SAP fields
+  const { data: kycData, error: kycErr } = await supabase
+    .from('kyc')
+    .select('id, status, sap_card_code, sap_bp_type, sap_synced_at, sap_sync_error, company_name');
+  if (kycErr) throw kycErr;
+
+  const rows = kycData || [];
+  const stats = {
+    totalApproved: rows.filter(r => r.status === 'Approved').length,
+    totalSynced: rows.filter(r => r.sap_card_code && r.sap_synced_at).length,
+    totalFailed: rows.filter(r => r.sap_sync_error && !r.sap_card_code).length,
+    totalPending: rows.filter(r => r.status === 'Approved' && !r.sap_card_code && !r.sap_sync_error).length,
+    recentSyncs: rows
+      .filter(r => r.sap_synced_at)
+      .sort((a, b) => new Date(b.sap_synced_at) - new Date(a.sap_synced_at))
+      .slice(0, 5)
+      .map(r => ({ id: r.id, companyName: r.company_name, cardCode: r.sap_card_code, bpType: r.sap_bp_type, syncedAt: r.sap_synced_at })),
+    failedEntries: rows
+      .filter(r => r.sap_sync_error && !r.sap_card_code)
+      .map(r => ({ id: r.id, companyName: r.company_name, error: r.sap_sync_error, bpType: r.sap_bp_type })),
+  };
+
+  return stats;
 }
 
 // ==================== AUDIT ====================

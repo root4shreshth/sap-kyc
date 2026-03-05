@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { href: '/kyc/new', label: 'New KYC', icon: '➕', requireKycSend: true },
   { href: '/kyc/bulk-import', label: 'Bulk Import', icon: '📤', adminOnly: true },
   { href: '/team', label: 'Team', icon: '👥', adminOnly: true },
+  { href: '/sap', label: 'SAP Integration', icon: '🔗', adminOnly: true },
   { href: '/settings/companies', label: 'Company Profiles', icon: '🏢', adminOnly: true },
 ];
 

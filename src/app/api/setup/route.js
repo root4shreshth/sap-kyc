@@ -298,6 +298,22 @@ CREATE TABLE IF NOT EXISTS message_log (
   metadata      JSONB DEFAULT '{}',
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS sap_sync_log (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  kyc_id          UUID REFERENCES kyc(id),
+  card_code       TEXT DEFAULT '',
+  bp_type         TEXT DEFAULT '',
+  status          TEXT NOT NULL DEFAULT 'pending'
+                  CHECK (status IN ('pending', 'processing', 'success', 'failed')),
+  request_payload JSONB DEFAULT '{}',
+  response_data   JSONB DEFAULT '{}',
+  error_message   TEXT DEFAULT '',
+  triggered_by    TEXT DEFAULT '',
+  duration_ms     INTEGER,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
 `;
 
 // Migration statements for existing tables that may need new columns
@@ -329,6 +345,7 @@ const ALL_TABLES = [
   'kyc_form', 'kyc_proprietors', 'kyc_ownership_management',
   'kyc_banking_checks', 'kyc_supplier_references', 'kyc_trade_references',
   'kyc_regulatory_compliance', 'kyc_social_media_reviews', 'kyc_warehouse_addresses', 'kyc_compliance_results',
+  'sap_sync_log',
 ];
 
 // SQL to create the exec_sql helper function (needed for running DDL via API)

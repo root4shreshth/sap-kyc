@@ -89,6 +89,23 @@ export const teamApi = {
   },
 };
 
+export const sapApi = {
+  dashboard: () =>
+    fetch('/api/sap/dashboard', { headers: getHeaders() }).then(handleResponse),
+  testConnection: () =>
+    fetch('/api/sap/test-connection', { method: 'POST', headers: getHeaders() }).then(handleResponse),
+  syncLog: (limit = 100) =>
+    fetch(`/api/sap/sync-log?limit=${limit}`, { headers: getHeaders() }).then(handleResponse),
+  retry: (kycId, bpType) =>
+    fetch(`/api/sap/retry/${kycId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ bpType }),
+    }).then(handleResponse),
+  fieldMapping: (kycId) =>
+    fetch(`/api/sap/field-mapping/${kycId}`, { headers: getHeaders() }).then(handleResponse),
+};
+
 export const kycApi = {
   stats: () =>
     fetch('/api/kyc/stats', { headers: getHeaders() }).then(handleResponse),
