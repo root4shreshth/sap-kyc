@@ -104,6 +104,14 @@ export const sapApi = {
     }).then(handleResponse),
   fieldMapping: (kycId) =>
     fetch(`/api/sap/field-mapping/${kycId}`, { headers: getHeaders() }).then(handleResponse),
+  queue: () =>
+    fetch('/api/sap/queue', { headers: getHeaders() }).then(handleResponse),
+  pushToSap: (kycId, bpType) =>
+    fetch(`/api/kyc/${kycId}/sap-push`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ bpType }),
+    }).then(handleResponse),
 };
 
 export const kycApi = {
