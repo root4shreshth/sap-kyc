@@ -6,6 +6,7 @@
  */
 
 import https from 'https';
+import http from 'http';
 import { URL } from 'url';
 
 function getSapConfig() {
@@ -17,29 +18,41 @@ function getSapConfig() {
   };
 }
 
+// Shared HTTPS agent — keeps connections alive between login and BP creation
+const sapAgent = new https.Agent({
+  rejectUnauthorized: false,
+  keepAlive: true,
+  keepAliveMsecs: 30000,
+  maxSockets: 5,
+  // Allow older TLS for on-prem SAP servers
+  minVersion: 'TLSv1',
+  // Accept legacy renegotiation
+  secureOptions: require('crypto').constants?.SSL_OP_LEGACY_SERVER_CONNECT || 0,
+});
+
 /**
  * Make an HTTPS request to SAP Service Layer using native https module.
- * This properly supports rejectUnauthorized: false for self-signed certs.
+ * Uses a shared agent with keep-alive for connection reuse and TLS flexibility.
  */
 function sapRequest(method, path, body = null, cookies = '') {
   return new Promise((resolve, reject) => {
     const config = getSapConfig();
     const fullUrl = `${config.baseUrl}${path}`;
     const parsed = new URL(fullUrl);
+    const isHttps = parsed.protocol === 'https:';
 
     const bodyStr = body ? JSON.stringify(body) : null;
 
     const options = {
       hostname: parsed.hostname,
-      port: parsed.port || 443,
+      port: parsed.port || (isHttps ? 443 : 80),
       path: parsed.pathname + parsed.search,
       method,
-      rejectAuthorized: false,
+      agent: isHttps ? sapAgent : new http.Agent({ keepAlive: true }),
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
-      // This is the key — allows self-signed certs on on-prem SAP
       rejectUnauthorized: false,
     };
 
@@ -51,7 +64,8 @@ function sapRequest(method, path, body = null, cookies = '') {
       options.headers['Content-Length'] = Buffer.byteLength(bodyStr);
     }
 
-    const req = https.request(options, (res) => {
+    const transport = isHttps ? https : http;
+    const req = transport.request(options, (res) => {
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
@@ -59,25 +73,25 @@ function sapRequest(method, path, body = null, cookies = '') {
         const setCookies = res.headers['set-cookie'] || [];
         const cookieString = setCookies.map(c => c.split(';')[0]).join('; ');
 
-        let parsed = null;
+        let jsonData = null;
         if (data) {
           try {
-            parsed = JSON.parse(data);
+            jsonData = JSON.parse(data);
           } catch {
-            parsed = { rawText: data };
+            jsonData = { rawText: data };
           }
         }
 
         if (res.statusCode >= 400) {
-          const errMsg = parsed?.error?.message?.value || parsed?.error?.message || `SAP request failed with status ${res.statusCode}`;
+          const errMsg = jsonData?.error?.message?.value || jsonData?.error?.message || `SAP request failed with status ${res.statusCode}`;
           const error = new Error(errMsg);
           error.status = res.statusCode;
-          error.sapError = parsed?.error || null;
+          error.sapError = jsonData?.error || null;
           reject(error);
           return;
         }
 
-        resolve({ data: parsed, cookies: cookieString || cookies, status: res.statusCode });
+        resolve({ data: jsonData, cookies: cookieString || cookies, status: res.statusCode });
       });
     });
 
@@ -85,10 +99,10 @@ function sapRequest(method, path, body = null, cookies = '') {
       reject(new Error(`SAP connection error: ${err.message}`));
     });
 
-    // 30 second timeout
-    req.setTimeout(30000, () => {
+    // 60 second timeout (BP creation can be slow)
+    req.setTimeout(60000, () => {
       req.destroy();
-      reject(new Error('SAP request timed out after 30 seconds'));
+      reject(new Error('SAP request timed out after 60 seconds'));
     });
 
     if (bodyStr) {
@@ -99,12 +113,33 @@ function sapRequest(method, path, body = null, cookies = '') {
 }
 
 /**
+ * Retry wrapper for transient errors like "socket hang up", "ECONNRESET"
+ */
+async function sapRequestWithRetry(method, path, body = null, cookies = '', retries = 2) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await sapRequest(method, path, body, cookies);
+    } catch (err) {
+      const isTransient = err.message?.includes('socket hang up') ||
+        err.message?.includes('ECONNRESET') ||
+        err.message?.includes('EPIPE');
+      if (isTransient && attempt < retries) {
+        console.warn(`[SAP] Transient error on attempt ${attempt}: ${err.message}. Retrying in 1s...`);
+        await new Promise(r => setTimeout(r, 1000));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+/**
  * Login to SAP Service Layer
  * Returns session cookies for subsequent requests
  */
 export async function sapLogin() {
   const config = getSapConfig();
-  const { data, cookies } = await sapRequest('POST', '/b1s/v1/Login', {
+  const { data, cookies } = await sapRequestWithRetry('POST', '/b1s/v1/Login', {
     CompanyDB: config.companyDb,
     UserName: config.username,
     Password: config.password,
@@ -143,7 +178,8 @@ export async function sapLogout(cookies) {
  * @returns {Object} Created BP data including CardCode
  */
 export async function createBusinessPartner(bpData, cookies) {
-  const { data } = await sapRequest('POST', '/b1s/v1/BusinessPartners', bpData, cookies);
+  console.log('[SAP] Creating BP, payload size:', JSON.stringify(bpData).length, 'bytes');
+  const { data } = await sapRequestWithRetry('POST', '/b1s/v1/BusinessPartners', bpData, cookies, 3);
   console.log('[SAP] Business Partner created:', data?.CardCode);
   return data;
 }
@@ -152,7 +188,7 @@ export async function createBusinessPartner(bpData, cookies) {
  * Get a Business Partner by CardCode
  */
 export async function getBusinessPartner(cardCode, cookies) {
-  const { data } = await sapRequest('GET', `/b1s/v1/BusinessPartners('${cardCode}')`, null, cookies);
+  const { data } = await sapRequestWithRetry('GET', `/b1s/v1/BusinessPartners('${cardCode}')`, null, cookies);
   return data;
 }
 
