@@ -98,6 +98,8 @@ export const sapApi = {
     fetch('/api/sap/dashboard', { headers: getHeaders() }).then(handleResponse),
   testConnection: () =>
     fetch('/api/sap/test-connection', { method: 'POST', headers: getHeaders() }).then(handleResponse),
+  deepTestConnection: () =>
+    fetch('/api/sap/test-connection?deep=true', { method: 'POST', headers: getHeaders() }).then(handleResponse),
   syncLog: (limit = 100) =>
     fetch(`/api/sap/sync-log?limit=${limit}`, { headers: getHeaders() }).then(handleResponse),
   retry: (kycId, bpType) =>

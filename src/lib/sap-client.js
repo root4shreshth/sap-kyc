@@ -3,6 +3,10 @@
  * Handles authentication, session management, and API calls to SAP Business One.
  * Uses cookie-based session auth (B1SESSION + ROUTEID).
  * Uses native https module (not fetch) to support self-signed SSL certs on on-prem SAP.
+ *
+ * KEY FIX: POST /BusinessPartners uses a FRESH HTTPS agent (separate TCP connection)
+ * to avoid 502 Proxy Error caused by SAP's Apache mod_proxy rejecting reused sockets.
+ * n8n works because it creates independent connections per request — we now do the same.
  */
 
 // Required for on-prem SAP with self-signed certs.
@@ -16,6 +20,10 @@ import http from 'http';
 import { URL } from 'url';
 import { constants as cryptoConstants } from 'crypto';
 
+// Configurable delay after login before first API call (ms).
+// Gives SAP SL session time to stabilize. Default 500ms.
+const SAP_POST_LOGIN_DELAY_MS = parseInt(process.env.SAP_POST_LOGIN_DELAY_MS || '500', 10);
+
 function getSapConfig() {
   return {
     baseUrl: process.env.SAP_BASE_URL || '',
@@ -26,16 +34,17 @@ function getSapConfig() {
 }
 
 /**
- * Create a fresh HTTPS agent for SAP connections.
- * Using per-session agents avoids stale connection issues in serverless environments.
- * The agent has SSL verification disabled for self-signed certs on on-prem SAP.
+ * Create an HTTPS agent for SAP connections.
+ * @param {Object} opts - Options to override defaults
+ * @param {boolean} opts.keepAlive - Whether to keep connections alive (default: true)
+ * @param {number} opts.maxSockets - Max concurrent sockets (default: 3)
  */
-function createSapAgent() {
+export function createSapAgent(opts = {}) {
   return new https.Agent({
     rejectUnauthorized: false,   // Allow self-signed certs (on-prem SAP)
-    keepAlive: true,
+    keepAlive: opts.keepAlive !== undefined ? opts.keepAlive : true,
     keepAliveMsecs: 10000,
-    maxSockets: 3,
+    maxSockets: opts.maxSockets || 3,
     // Allow ALL TLS versions for on-prem SAP servers
     minVersion: 'TLSv1',
     secureOptions: cryptoConstants?.SSL_OP_LEGACY_SERVER_CONNECT || 0,
@@ -43,11 +52,32 @@ function createSapAgent() {
 }
 
 /**
- * Make an HTTPS request to SAP Service Layer using native https module.
- * Creates a dedicated agent per call to avoid stale connections.
- * @param {https.Agent} agent - Optional shared agent (for session reuse)
+ * Create a fresh HTTPS agent specifically for POST requests.
+ * Uses keepAlive:false to force a new TCP connection per request.
+ * This avoids the 502 Proxy Error caused by SAP's Apache mod_proxy
+ * rejecting POST requests that reuse the login socket.
  */
-function sapRequest(method, path, body = null, cookies = '', agent = null) {
+export function createPostAgent() {
+  return new https.Agent({
+    rejectUnauthorized: false,
+    keepAlive: false,    // Force fresh TCP connection per request
+    maxSockets: 1,       // Single socket, no pooling
+    minVersion: 'TLSv1',
+    secureOptions: cryptoConstants?.SSL_OP_LEGACY_SERVER_CONNECT || 0,
+  });
+}
+
+/**
+ * Make an HTTPS request to SAP Service Layer using native https module.
+ * @param {string} method - HTTP method
+ * @param {string} path - API path (e.g., /b1s/v1/BusinessPartners)
+ * @param {Object|null} body - Request body (will be JSON.stringify'd)
+ * @param {string} cookies - Session cookies
+ * @param {https.Agent|null} agent - HTTPS agent (default: creates new one)
+ * @param {Object} extraHeaders - Additional headers to merge
+ * @param {string|null} portOverride - Override port number (for alternate port strategy)
+ */
+function sapRequest(method, path, body = null, cookies = '', agent = null, extraHeaders = {}, portOverride = null) {
   return new Promise((resolve, reject) => {
     const config = getSapConfig();
     const fullUrl = `${config.baseUrl}${path}`;
@@ -60,6 +90,7 @@ function sapRequest(method, path, body = null, cookies = '', agent = null) {
     // Extra headers (Prefer, Accept, B1S-*) can confuse some SAP SL proxies
     const headers = {
       'Content-Type': 'application/json',
+      ...extraHeaders,
     };
 
     // Only add B1S-ReplaceCollectionsOnPatch for PATCH requests (where it's needed)
@@ -69,7 +100,7 @@ function sapRequest(method, path, body = null, cookies = '', agent = null) {
 
     const options = {
       hostname: parsed.hostname,
-      port: parsed.port || (isHttps ? 443 : 80),
+      port: portOverride || parsed.port || (isHttps ? 443 : 80),
       path: parsed.pathname + parsed.search,
       method,
       agent: isHttps ? (agent || createSapAgent()) : new http.Agent({ keepAlive: true }),
@@ -153,21 +184,36 @@ function sapRequest(method, path, body = null, cookies = '', agent = null) {
 }
 
 /**
- * Retry wrapper for transient errors like "socket hang up", "ECONNRESET"
+ * Raw single-request function for diagnostic purposes.
+ * No retry, no agent management — caller controls everything.
  */
-async function sapRequestWithRetry(method, path, body = null, cookies = '', retries = 3, agent = null) {
+export async function sapRequestRaw(method, path, body, cookies, agent, extraHeaders = {}, portOverride = null) {
+  return sapRequest(method, path, body, cookies, agent, extraHeaders, portOverride);
+}
+
+/**
+ * Retry wrapper for transient errors like "socket hang up", "ECONNRESET", 502 Proxy.
+ * On 502/proxy errors, creates a fresh agent for each retry to avoid stale sockets.
+ */
+async function sapRequestWithRetry(method, path, body = null, cookies = '', retries = 3, agent = null, extraHeaders = {}) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      return await sapRequest(method, path, body, cookies, agent);
+      return await sapRequest(method, path, body, cookies, agent, extraHeaders);
     } catch (err) {
       const isTransient = err.message?.includes('socket hang up') ||
         err.message?.includes('ECONNRESET') ||
         err.message?.includes('EPIPE') ||
         err.message?.includes('ECONNREFUSED') ||
-        err.message?.includes('timed out');
+        err.message?.includes('timed out') ||
+        err.isProxy;  // 502/503 are also transient — retry with fresh connection
       if (isTransient && attempt < retries) {
-        const delay = attempt * 1500; // 1.5s, 3s, 4.5s...
-        console.warn(`[SAP] Transient error on attempt ${attempt}/${retries}: ${err.message}. Retrying in ${delay}ms...`);
+        const delay = attempt * 2000; // 2s, 4s, 6s...
+        console.warn(`[SAP] Transient error on attempt ${attempt}/${retries}: ${err.message}. Retrying in ${delay}ms with fresh connection...`);
+        // Create a fresh agent for the retry to avoid reusing broken sockets
+        if (agent && err.isProxy) {
+          try { agent.destroy(); } catch { /* ignore */ }
+          agent = createPostAgent(); // Fresh TCP connection
+        }
         await new Promise(r => setTimeout(r, delay));
         continue;
       }
@@ -182,7 +228,7 @@ async function sapRequestWithRetry(method, path, body = null, cookies = '', retr
  */
 export async function sapLogin() {
   const config = getSapConfig();
-  // Create a fresh agent for this entire session
+  // Create a fresh agent for login
   const sessionAgent = createSapAgent();
 
   const { data, cookies } = await sapRequestWithRetry('POST', '/b1s/v1/Login', {
@@ -201,7 +247,7 @@ export async function sapLogin() {
     sessionId: data?.SessionId,
     cookies,
     timeout: data?.SessionTimeout || 30,
-    agent: sessionAgent, // Pass agent for connection reuse within session
+    agent: sessionAgent, // Pass agent for GET/PATCH reuse within session
   };
 }
 
@@ -330,23 +376,91 @@ function _doUploadAttachments(files, cookies, agent = null) {
 }
 
 /**
- * Create a Business Partner in SAP B1
+ * Create a Business Partner in SAP B1.
+ *
+ * CRITICAL FIX: Uses a FRESH HTTPS agent (new TCP connection) instead of the
+ * login session agent. SAP's Apache proxy returns 502 when POST /BusinessPartners
+ * reuses the login socket. n8n avoids this by using independent connections per call.
+ *
+ * Falls back through multiple strategies if the first attempt fails with 502:
+ * 1. Fresh agent + Connection: close (3 retries)
+ * 2. Fresh agent + ?$select=CardCode (lighter response)
+ * 3. Fresh agent + alternate port (50001/50000)
+ *
  * @param {Object} bpData - SAP Business Partner payload
  * @param {string} cookies - Session cookies from sapLogin
- * @param {https.Agent} agent - Session agent for connection reuse
+ * @param {https.Agent} agent - Session agent (NOT used for POST — uses fresh agent instead)
  * @returns {Object} Created BP data including CardCode
  */
 export async function createBusinessPartner(bpData, cookies, agent = null) {
   console.log('[SAP] Creating BP, payload size:', JSON.stringify(bpData).length, 'bytes');
   console.log('[SAP] Creating BP, payload keys:', Object.keys(bpData).join(', '));
-  const { data } = await sapRequestWithRetry('POST', '/b1s/v1/BusinessPartners', bpData, cookies, 3, agent);
-  console.log('[SAP] Business Partner created:', data?.CardCode);
-  return data;
+
+  // ====== ATTEMPT 1: Fresh agent + Connection: close (primary fix) ======
+  const postAgent1 = createPostAgent();
+  try {
+    const { data } = await sapRequestWithRetry(
+      'POST', '/b1s/v1/BusinessPartners', bpData, cookies, 3, postAgent1,
+      { 'Connection': 'close' }
+    );
+    console.log('[SAP] Business Partner created (fresh agent):', data?.CardCode);
+    return data;
+  } catch (err1) {
+    console.warn('[SAP] Attempt 1 (fresh agent) failed:', err1.message);
+    try { postAgent1.destroy(); } catch { /* ignore */ }
+
+    // Only try fallbacks for proxy/transport errors, not business logic errors
+    if (!err1.isProxy && !err1.message?.includes('socket') && !err1.message?.includes('timed out')) {
+      throw err1; // Business logic error (e.g., duplicate CardCode) — don't retry
+    }
+
+    // ====== ATTEMPT 2: Fresh agent + $select=CardCode (lighter response) ======
+    console.log('[SAP] Trying fallback: POST with ?$select=CardCode');
+    const postAgent2 = createPostAgent();
+    try {
+      const { data } = await sapRequest(
+        'POST', '/b1s/v1/BusinessPartners?$select=CardCode', bpData, cookies, postAgent2,
+        { 'Connection': 'close' }
+      );
+      console.log('[SAP] Business Partner created ($select fallback):', data?.CardCode);
+      return data;
+    } catch (err2) {
+      console.warn('[SAP] Attempt 2 ($select) failed:', err2.message);
+      try { postAgent2.destroy(); } catch { /* ignore */ }
+
+      if (!err2.isProxy && !err2.message?.includes('socket') && !err2.message?.includes('timed out')) {
+        throw err2;
+      }
+    }
+
+    // ====== ATTEMPT 3: Fresh agent + alternate port ======
+    const config = getSapConfig();
+    const currentPort = new URL(config.baseUrl).port || '50000';
+    const altPort = currentPort === '50000' ? '50001' : '50000';
+    console.log(`[SAP] Trying fallback: alternate port ${altPort}`);
+    const postAgent3 = createPostAgent();
+    try {
+      const { data } = await sapRequest(
+        'POST', '/b1s/v1/BusinessPartners', bpData, cookies, postAgent3,
+        { 'Connection': 'close' }, altPort
+      );
+      console.log(`[SAP] Business Partner created (alt port ${altPort}):`, data?.CardCode);
+      return data;
+    } catch (err3) {
+      console.warn(`[SAP] Attempt 3 (alt port ${altPort}) failed:`, err3.message);
+      try { postAgent3.destroy(); } catch { /* ignore */ }
+    }
+
+    // All strategies exhausted — throw the original error with context
+    err1.message = `All BP creation strategies failed. Last error: ${err1.message}. Tried: fresh agent, $select, alt port ${altPort}.`;
+    throw err1;
+  }
 }
 
 /**
  * Update (PATCH) a Business Partner in SAP B1.
  * Used for staged updates — first create minimal BP, then patch in addresses/contacts.
+ * PATCH uses the session agent (not a fresh one) since it works fine on reused sockets.
  */
 export async function updateBusinessPartner(cardCode, patchData, cookies, agent = null) {
   console.log('[SAP] Patching BP:', cardCode, 'keys:', Object.keys(patchData).join(', '));
@@ -373,11 +487,16 @@ export function isSapConfigured() {
 /**
  * Execute a full SAP operation with auto login/logout.
  * Creates a dedicated HTTPS agent per session for connection isolation.
- * Handles session lifecycle automatically.
+ * Adds a brief post-login delay for SAP SL session stabilization.
  */
 export async function withSapSession(operation) {
   const session = await sapLogin();
   try {
+    // Brief delay after login for SAP SL session to stabilize
+    if (SAP_POST_LOGIN_DELAY_MS > 0) {
+      console.log(`[SAP] Post-login delay: ${SAP_POST_LOGIN_DELAY_MS}ms`);
+      await new Promise(r => setTimeout(r, SAP_POST_LOGIN_DELAY_MS));
+    }
     const result = await operation(session.cookies, session.agent);
     return result;
   } finally {

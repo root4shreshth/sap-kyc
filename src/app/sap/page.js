@@ -372,10 +372,119 @@ function KycSapCard({ entry, onPush, pushing, onExpand, expanded }) {
   );
 }
 
+// ===== DEEP TEST RESULTS =====
+function DeepTestResults({ result }) {
+  const strategies = result.strategies || {};
+  const checklist = result.sapChecklist?.items || [];
+  const allFailed = !result.workingStrategy;
+
+  const statusIcon = (s) => s === 'success' ? '✅' : s === 'failed' ? '❌' : '⏭️';
+  const statusColor = (s) => s === 'success' ? '#166534' : s === 'failed' ? '#dc2626' : '#6b7280';
+  const statusBg = (s) => s === 'success' ? '#f0fdf4' : s === 'failed' ? '#fef2f2' : '#f9fafb';
+  const statusBorder = (s) => s === 'success' ? '#86efac' : s === 'failed' ? '#fca5a5' : '#e5e7eb';
+
+  return (
+    <div style={{ borderTop: '1px solid #e5e7eb', padding: '16px 20px' }}>
+      {/* Header */}
+      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, color: result.workingStrategy ? '#166534' : '#991b1b' }}>
+        {result.workingStrategy
+          ? `✅ Working strategy: "${result.workingStrategy.replace(/_/g, ' ')}"`
+          : '❌ All strategies failed — check SAP server configuration'}
+      </div>
+
+      {/* GET BP Result */}
+      {result.results?.getBP && (
+        <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
+          GET BusinessPartner: {result.results.getBP.status === 'success'
+            ? `✅ Found ${result.results.getBP.cardCode} (${result.results.getBP.durationMs}ms)`
+            : `❌ ${result.results.getBP.error}`}
+        </div>
+      )}
+
+      {/* Strategy Results */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+        {Object.entries(strategies).map(([name, s]) => (
+          <div key={name} style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+            borderRadius: 8, fontSize: 12,
+            background: statusBg(s.status), border: `1px solid ${statusBorder(s.status)}`,
+          }}>
+            <span style={{ fontSize: 14 }}>{statusIcon(s.status)}</span>
+            <span style={{ fontWeight: 600, color: '#374151', minWidth: 140 }}>
+              {name.replace(/_/g, ' ')}
+            </span>
+            {s.durationMs != null && (
+              <span style={{ color: '#9ca3af', fontSize: 11 }}>{s.durationMs}ms</span>
+            )}
+            {s.error && (
+              <span style={{ color: '#dc2626', fontSize: 11, marginLeft: 'auto', maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {s.error}
+              </span>
+            )}
+            {s.reason && (
+              <span style={{ color: '#6b7280', fontSize: 11, marginLeft: 'auto' }}>{s.reason}</span>
+            )}
+            {s.cardCode && (
+              <code style={{ marginLeft: 'auto', fontSize: 11, background: '#dcfce7', padding: '1px 6px', borderRadius: 4, color: '#166534' }}>
+                {s.cardCode}
+              </code>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Recommendation */}
+      {result.recommendation && (
+        <div style={{
+          padding: '10px 14px', borderRadius: 10, marginBottom: 12,
+          background: result.workingStrategy ? '#eff6ff' : '#fef2f2',
+          border: `1px solid ${result.workingStrategy ? '#93c5fd' : '#fca5a5'}`,
+          color: result.workingStrategy ? '#1d4ed8' : '#991b1b',
+          fontSize: 13,
+        }}>
+          <strong>💡 Recommendation:</strong> {result.recommendation}
+        </div>
+      )}
+
+      {/* SAP Server-Side Checklist (shown when all fail) */}
+      {allFailed && checklist.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{
+            fontSize: 12, fontWeight: 700, color: '#b45309', marginBottom: 8,
+            textTransform: 'uppercase', letterSpacing: 0.5,
+          }}>
+            🔧 SAP Server-Side Checklist
+          </div>
+          {checklist.map(item => (
+            <div key={item.id} style={{
+              padding: '10px 14px', borderRadius: 8, marginBottom: 4,
+              background: item.priority === 'HIGH' ? '#fef2f2' : '#fffbeb',
+              border: `1px solid ${item.priority === 'HIGH' ? '#fca5a5' : '#fde68a'}`,
+              fontSize: 12,
+            }}>
+              <div style={{ fontWeight: 700, color: item.priority === 'HIGH' ? '#991b1b' : '#92400e', marginBottom: 3 }}>
+                [{item.priority}] {item.label}
+              </div>
+              <div style={{ color: '#4b5563', lineHeight: 1.4 }}>{item.how}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 8 }}>
+        Total time: {result.totalTimeMs}ms
+        {result.createdCardCode && ` · Created: ${result.createdCardCode}`}
+      </div>
+    </div>
+  );
+}
+
 // ===== CONNECTION PANEL (Compact) =====
 function ConnectionPanel({ config, onTestConnection }) {
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState(null);
+  const [deepTesting, setDeepTesting] = useState(false);
+  const [deepResult, setDeepResult] = useState(null);
 
   const handleTest = async () => {
     setTesting(true); setResult(null);
@@ -384,6 +493,16 @@ function ConnectionPanel({ config, onTestConnection }) {
     setTesting(false);
     if (onTestConnection) onTestConnection();
   };
+
+  const handleDeepTest = async () => {
+    setDeepTesting(true); setDeepResult(null);
+    try { setDeepResult(await sapApi.deepTestConnection()); }
+    catch (err) { setDeepResult({ success: false, error: err.message, strategies: {} }); }
+    setDeepTesting(false);
+    if (onTestConnection) onTestConnection();
+  };
+
+  const busy = testing || deepTesting;
 
   return (
     <div style={{ background: 'white', borderRadius: 16, border: '1px solid #e5e7eb', overflow: 'hidden' }}>
@@ -402,13 +521,20 @@ function ConnectionPanel({ config, onTestConnection }) {
           </div>
         )}
       </div>
-      <div style={{ padding: '12px 20px', display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button onClick={handleTest} disabled={testing || !config?.configured} style={{
+      <div style={{ padding: '12px 20px', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button onClick={handleTest} disabled={busy || !config?.configured} style={{
           padding: '8px 16px', borderRadius: 8, border: 'none',
-          background: testing ? '#9ca3af' : '#2563eb', color: 'white',
-          fontSize: 13, fontWeight: 600, cursor: testing ? 'not-allowed' : 'pointer',
+          background: busy ? '#9ca3af' : '#2563eb', color: 'white',
+          fontSize: 13, fontWeight: 600, cursor: busy ? 'not-allowed' : 'pointer',
         }}>
           {testing ? '⟳ Testing...' : '⚡ Test Connection'}
+        </button>
+        <button onClick={handleDeepTest} disabled={busy || !config?.configured} style={{
+          padding: '8px 16px', borderRadius: 8, border: 'none',
+          background: busy ? '#9ca3af' : '#7c3aed', color: 'white',
+          fontSize: 13, fontWeight: 600, cursor: busy ? 'not-allowed' : 'pointer',
+        }}>
+          {deepTesting ? '⟳ Running Deep Test...' : '🔬 Deep Test (BP Create)'}
         </button>
         {result && (
           <span style={{ fontSize: 13, color: result.success ? '#166534' : '#dc2626', fontWeight: 600 }}>
@@ -416,6 +542,9 @@ function ConnectionPanel({ config, onTestConnection }) {
           </span>
         )}
       </div>
+
+      {/* Deep Test Results */}
+      {deepResult && <DeepTestResults result={deepResult} />}
     </div>
   );
 }
