@@ -65,6 +65,9 @@ function sapRequest(method, path, body = null, cookies = '', agent = null) {
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
+        // SAP B1 Service Layer specific headers
+        'Prefer': 'odata.maxpagesize=0',
+        'B1S-ReplaceCollectionsOnPatch': 'true',
       },
       rejectUnauthorized: false,
     };
