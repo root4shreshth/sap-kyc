@@ -34,10 +34,21 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: `Already pushed to SAP as ${kyc.sapCardCode}. Use a different endpoint to update.` }, { status: 409 });
     }
 
-    // Get form data
-    const formData = await getKycFormData(id);
+    // Get form data — fall back to KYC record basics if portal form was never submitted
+    let formData = await getKycFormData(id);
     if (!formData || Object.keys(formData).length === 0) {
-      return NextResponse.json({ error: 'No form data found for this KYC' }, { status: 400 });
+      // Build minimal form data from the KYC record itself
+      console.log('[SAP Push] No kyc_form data found, using KYC record basics for:', id);
+      formData = {
+        businessInfo: {
+          businessName: kyc.companyName || kyc.clientName || '',
+          phone: kyc.phone || '',
+        },
+        companyDetails: {
+          companyName: kyc.companyName || '',
+          email: kyc.email || '',
+        },
+      };
     }
 
     // Validate minimum required fields

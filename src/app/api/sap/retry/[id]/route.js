@@ -33,9 +33,19 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: `Already synced as ${kyc.sapCardCode}` }, { status: 409 });
     }
 
-    const formData = await getKycFormData(id);
+    let formData = await getKycFormData(id);
     if (!formData || Object.keys(formData).length === 0) {
-      return NextResponse.json({ error: 'No form data found' }, { status: 400 });
+      // Fall back to KYC record basics if portal form was never submitted
+      formData = {
+        businessInfo: {
+          businessName: kyc.companyName || kyc.clientName || '',
+          phone: kyc.phone || '',
+        },
+        companyDetails: {
+          companyName: kyc.companyName || '',
+          email: kyc.email || '',
+        },
+      };
     }
 
     const validation = validateForSapPush(formData);
