@@ -148,8 +148,13 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
   const cardCode = generateCardCode(kycRecord.id, companyName, bpType);
   const L = SAP_LIMITS;
 
-  // Build FreeText with trade license + bank summary
+  // Build FreeText with tax IDs, trade license + bank summary
+  // NOTE: VatRegistrationNumber and FederalTaxID are NOT sent as direct BP properties
+  // because SAP B1 may reject them as invalid depending on the installation/localization.
+  // Instead, we pack them into FreeText to preserve the data safely.
   const freeTextParts = [
+    bi.taxRegistrationNo ? `TRN:${bi.taxRegistrationNo}` : '',
+    cd.vatRegistrationNo ? `VAT:${cd.vatRegistrationNo}` : '',
     cd.tradeLicenseNo ? `TL:${cd.tradeLicenseNo}` : '',
     cd.tradeLicenseExpiry ? `Exp:${cd.tradeLicenseExpiry}` : '',
     bi.natureOfBusiness ? `Biz:${bi.natureOfBusiness}` : '',
@@ -171,8 +176,6 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
     Phone2: t(bi.phone && cd.officePhone ? bi.phone : '', L.Phone),
     EmailAddress: t(cd.email || kycRecord.email, L.Email),
     Website: t(cd.websiteSocialMedia || bi.website, L.Website),
-    FederalTaxID: t(bi.taxRegistrationNo, L.FederalTaxID),
-    VatRegistrationNumber: t(cd.vatRegistrationNo, L.VatReg),
     FreeText: t(freeTextParts.filter(Boolean).join('|'), L.FreeText),
     Country: t(getCountryCode(bi.country), L.Country),
     Notes: t(`KYC:${kycRecord.id.substring(0, 36)}`, L.Notes),
