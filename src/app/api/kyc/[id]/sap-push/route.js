@@ -95,7 +95,7 @@ export async function POST(request, { params }) {
     let attachmentWarnings = [];
 
     try {
-      sapResult = await withSapSession(async (cookies) => {
+      sapResult = await withSapSession(async (cookies, agent) => {
         // Step 1: Upload documents as SAP attachments (if any exist)
         if (docs.length > 0 && !minimal) {
           console.log(`[SAP Push] Downloading ${docs.length} files from Supabase for SAP attachment...`);
@@ -118,7 +118,7 @@ export async function POST(request, { params }) {
 
           if (filesToUpload.length > 0) {
             try {
-              const attachResult = await uploadAttachments(filesToUpload, cookies);
+              const attachResult = await uploadAttachments(filesToUpload, cookies, agent);
               attachmentEntry = attachResult?.AbsoluteEntry;
               console.log('[SAP Push] Attachments uploaded, entry:', attachmentEntry);
             } catch (attErr) {
@@ -136,7 +136,7 @@ export async function POST(request, { params }) {
         }
 
         // Step 3: Create the Business Partner
-        return await createBusinessPartner(finalPayload, cookies);
+        return await createBusinessPartner(finalPayload, cookies, agent);
       });
     } catch (sapErr) {
       const duration = Date.now() - startTime;

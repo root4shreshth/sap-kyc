@@ -19,8 +19,8 @@ export async function POST(request) {
     const session = await sapLogin();
     const loginTime = Date.now() - startTime;
 
-    // Test logout too
-    await sapLogout(session.cookies);
+    // Test logout too (pass agent so it gets cleaned up)
+    await sapLogout(session.cookies, session.agent);
     const totalTime = Date.now() - startTime;
 
     return NextResponse.json({
