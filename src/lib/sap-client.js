@@ -376,6 +376,31 @@ function _doUploadAttachments(files, cookies, agent = null) {
 }
 
 /**
+ * Create a placeholder attachment in SAP.
+ * SAP B1 may require an AttachmentEntry on every Business Partner.
+ * When no real documents exist, this uploads a tiny text file to satisfy the requirement.
+ * @param {string} cookies - Session cookies
+ * @param {https.Agent|null} agent - HTTPS agent (a fresh postAgent is recommended)
+ * @returns {number} AbsoluteEntry of the created attachment
+ */
+export async function createPlaceholderAttachment(cookies, agent = null) {
+  const timestamp = new Date().toISOString();
+  const content = `KYC Business Partner placeholder attachment.\nCreated: ${timestamp}\nThis file was auto-generated to satisfy SAP attachment requirements.`;
+  const buffer = Buffer.from(content, 'utf-8');
+
+  const result = await _doUploadAttachments(
+    [{ buffer, fileName: 'kyc-placeholder.txt', mimeType: 'text/plain' }],
+    cookies,
+    agent
+  );
+
+  if (!result?.AbsoluteEntry) {
+    throw new Error('Placeholder attachment created but no AbsoluteEntry returned');
+  }
+  return result.AbsoluteEntry;
+}
+
+/**
  * Create a Business Partner in SAP B1.
  *
  * CRITICAL FIX: Uses a FRESH HTTPS agent (new TCP connection) instead of the

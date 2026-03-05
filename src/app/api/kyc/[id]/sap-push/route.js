@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getKycById, getKycFormData, getDocsByKycId, updateKycSapStatus, createAuditEntry, createSapSyncLog, updateSapSyncLog } from '@/lib/db';
-import { withSapSession, createBusinessPartner, updateBusinessPartner, uploadAttachments, isSapConfigured, createPostAgent } from '@/lib/sap-client';
+import { withSapSession, createBusinessPartner, updateBusinessPartner, uploadAttachments, createPlaceholderAttachment, isSapConfigured, createPostAgent } from '@/lib/sap-client';
 import { mapKycToBusinessPartner, mapKycToMinimalBusinessPartner, mapKycToAddresses, mapKycToContacts, getCardCode, validateForSapPush } from '@/lib/sap-mapping';
 import { downloadFile } from '@/lib/storage';
 
@@ -106,6 +106,8 @@ export async function POST(request, { params }) {
         console.log('[SAP Push] Session established. Starting push...');
 
         // ====== ATTACHMENT UPLOAD (before BP creation) ======
+        // SAP B1 REQUIRES an AttachmentEntry on every Business Partner.
+        // If real documents exist, upload them. Otherwise, create a placeholder.
         if (docs.length > 0) {
           console.log(`[SAP Push] Downloading ${docs.length} files from Supabase...`);
           const filesToUpload = [];
@@ -129,28 +131,44 @@ export async function POST(request, { params }) {
           if (filesToUpload.length > 0) {
             try {
               console.log(`[SAP Push] Uploading ${filesToUpload.length} files to SAP Attachments2...`);
-              // Use a FRESH agent for attachment upload (same fix as BP creation)
               const attachAgent = createPostAgent();
               try {
                 const attachResult = await uploadAttachments(filesToUpload, cookies, attachAgent);
                 attachmentEntry = attachResult?.AbsoluteEntry;
-                stageResults.attachments = `success (entry: ${attachmentEntry})`;
+                stageResults.attachments = `success (entry: ${attachmentEntry}, ${filesToUpload.length} file(s))`;
                 console.log('[SAP Push] Attachments uploaded, AbsoluteEntry:', attachmentEntry);
               } finally {
                 try { attachAgent.destroy(); } catch { /* ignore */ }
               }
             } catch (attErr) {
-              console.warn('[SAP Push] Attachment upload to SAP failed:', attErr.message);
+              console.warn('[SAP Push] Real attachment upload failed:', attErr.message);
               attachmentWarnings.push(`SAP upload failed: ${attErr.message}`);
-              stageResults.attachments = `failed: ${attErr.message}`;
-              // Continue without attachments — BP creation may still work
+              // Fall through — placeholder will be created below
             }
           } else {
-            console.warn('[SAP Push] All document downloads failed — no files to upload to SAP');
-            stageResults.attachments = `skipped (all ${docs.length} downloads failed)`;
+            console.warn('[SAP Push] All document downloads failed — will create placeholder');
+            attachmentWarnings.push(`All ${docs.length} document downloads failed`);
           }
-        } else if (skipAttachments) {
-          stageResults.attachments = 'skipped (user chose to skip)';
+        }
+
+        // If we still don't have an attachment entry (no docs, skip mode, or upload failed),
+        // create a placeholder attachment because SAP B1 requires one.
+        if (!attachmentEntry) {
+          console.log('[SAP Push] Creating placeholder attachment (SAP requires AttachmentEntry)...');
+          const placeholderAgent = createPostAgent();
+          try {
+            attachmentEntry = await createPlaceholderAttachment(cookies, placeholderAgent);
+            const reason = skipAttachments || minimal ? 'user chose minimal/no-docs' : 'no real docs available';
+            stageResults.attachments = `placeholder (entry: ${attachmentEntry}, reason: ${reason})`;
+            console.log('[SAP Push] Placeholder attachment created, AbsoluteEntry:', attachmentEntry);
+          } catch (phErr) {
+            console.error('[SAP Push] Placeholder attachment failed:', phErr.message);
+            stageResults.attachments = `placeholder failed: ${phErr.message}`;
+            attachmentWarnings.push(`Placeholder attachment failed: ${phErr.message}`);
+            // Continue anyway — BP creation will likely fail with (101) but let's try
+          } finally {
+            try { placeholderAgent.destroy(); } catch { /* ignore */ }
+          }
         }
 
         // ====== STAGE 1: Create BP with core fields only (POST) ======
