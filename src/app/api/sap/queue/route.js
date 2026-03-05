@@ -72,8 +72,24 @@ export async function GET(request) {
       }
     }
 
+    // Get document counts for each KYC
+    let docCountMap = {};
+    if (kycIds.length > 0) {
+      const { data: docData } = await supabase
+        .from('kyc_docs')
+        .select('kyc_id, file_name, doc_type')
+        .in('kyc_id', kycIds);
+      if (docData) {
+        docData.forEach(d => {
+          if (!docCountMap[d.kyc_id]) docCountMap[d.kyc_id] = [];
+          docCountMap[d.kyc_id].push({ fileName: d.file_name, docType: d.doc_type });
+        });
+      }
+    }
+
     const result = (kycList || []).map(kyc => {
       const form = formDataMap[kyc.id] || {};
+      const kycDocs = docCountMap[kyc.id] || [];
       return {
         id: kyc.id,
         clientName: kyc.client_name,
@@ -115,6 +131,9 @@ export async function GET(request) {
           shareholding: o.shareholding_percent, email: o.email, phone: o.contact_no,
         })),
         warehouses: (form._warehouses || []).map(w => w.address).filter(Boolean),
+        // Documents
+        docsCount: kycDocs.length,
+        docs: kycDocs,
       };
     });
 

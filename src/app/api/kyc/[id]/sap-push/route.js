@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
-import { getKycById, getKycFormData, updateKycSapStatus, createAuditEntry, createSapSyncLog, updateSapSyncLog } from '@/lib/db';
-import { withSapSession, createBusinessPartner, isSapConfigured } from '@/lib/sap-client';
+import { getKycById, getKycFormData, getDocsByKycId, updateKycSapStatus, createAuditEntry, createSapSyncLog, updateSapSyncLog } from '@/lib/db';
+import { withSapSession, createBusinessPartner, uploadAttachments, isSapConfigured } from '@/lib/sap-client';
 import { mapKycToBusinessPartner, mapKycToMinimalBusinessPartner, validateForSapPush } from '@/lib/sap-mapping';
+import { downloadFile } from '@/lib/storage';
 
 export async function POST(request, { params }) {
   const { user, error } = requireAuth(request, ['Admin']);
@@ -38,7 +39,6 @@ export async function POST(request, { params }) {
     // Get form data — fall back to KYC record basics if portal form was never submitted
     let formData = await getKycFormData(id);
     if (!formData || Object.keys(formData).length === 0) {
-      // Build minimal form data from the KYC record itself
       console.log('[SAP Push] No kyc_form data found, using KYC record basics for:', id);
       formData = {
         businessInfo: {
@@ -59,13 +59,23 @@ export async function POST(request, { params }) {
     }
 
     // Map KYC data to SAP Business Partner structure
-    // Use minimal mode for testing — only sends CardCode, CardName, CardType
     const bpPayload = minimal
       ? mapKycToMinimalBusinessPartner(formData, kyc, bpType)
       : mapKycToBusinessPartner(formData, kyc, bpType);
 
     console.log('[SAP Push] Creating BP for KYC:', id, 'Type:', bpType, 'Minimal:', !!minimal, 'CardCode:', bpPayload.CardCode);
     console.log('[SAP Push] Payload:', JSON.stringify(bpPayload, null, 2));
+
+    // Get KYC documents for attachment
+    let docs = [];
+    let docsWarning = null;
+    try {
+      docs = await getDocsByKycId(id);
+      console.log(`[SAP Push] Found ${docs.length} documents for KYC:`, id);
+    } catch (docErr) {
+      console.warn('[SAP Push] Could not fetch documents:', docErr.message);
+      docsWarning = 'Could not fetch documents from database';
+    }
 
     // Create sync log entry
     const syncLog = await createSapSyncLog({
@@ -81,15 +91,67 @@ export async function POST(request, { params }) {
 
     // Execute SAP push with auto session management
     let sapResult;
+    let attachmentEntry = null;
+    let attachmentWarnings = [];
+
     try {
       sapResult = await withSapSession(async (cookies) => {
-        return await createBusinessPartner(bpPayload, cookies);
+        // Step 1: Upload documents as SAP attachments (if any exist)
+        if (docs.length > 0 && !minimal) {
+          console.log(`[SAP Push] Downloading ${docs.length} files from Supabase for SAP attachment...`);
+          const filesToUpload = [];
+
+          for (const doc of docs) {
+            try {
+              const { buffer, mimeType } = await downloadFile(doc.driveFileId);
+              filesToUpload.push({
+                buffer,
+                fileName: doc.fileName || 'document.pdf',
+                mimeType: mimeType || 'application/pdf',
+              });
+              console.log(`[SAP Push] Downloaded: ${doc.fileName} (${buffer.length} bytes)`);
+            } catch (dlErr) {
+              console.warn(`[SAP Push] Failed to download ${doc.fileName}:`, dlErr.message);
+              attachmentWarnings.push(`Could not download: ${doc.fileName}`);
+            }
+          }
+
+          if (filesToUpload.length > 0) {
+            try {
+              const attachResult = await uploadAttachments(filesToUpload, cookies);
+              attachmentEntry = attachResult?.AbsoluteEntry;
+              console.log('[SAP Push] Attachments uploaded, entry:', attachmentEntry);
+            } catch (attErr) {
+              console.warn('[SAP Push] Attachment upload failed:', attErr.message);
+              attachmentWarnings.push(`Attachment upload failed: ${attErr.message}`);
+              // Continue without attachments — will try BP creation anyway
+            }
+          }
+        }
+
+        // Step 2: Add attachment entry to BP payload if we have one
+        const finalPayload = { ...bpPayload };
+        if (attachmentEntry) {
+          finalPayload.AttachmentEntry = attachmentEntry;
+        }
+
+        // Step 3: Create the Business Partner
+        return await createBusinessPartner(finalPayload, cookies);
       });
     } catch (sapErr) {
       const duration = Date.now() - startTime;
       console.error('[SAP Push] SAP error:', sapErr.message);
 
-      // Store the error in DB for visibility
+      // If it failed because of missing attachment and we have no docs, provide a clear message
+      const isAttachmentError = sapErr.message?.includes('Attachment') || sapErr.message?.includes('101');
+      const hint = isAttachmentError && docs.length === 0
+        ? 'SAP requires document attachments but no documents were uploaded for this KYC. Please upload documents through the client portal first.'
+        : isAttachmentError && docs.length > 0 && !attachmentEntry
+          ? 'Documents exist but failed to upload to SAP. Check the server logs for details.'
+          : sapErr.message?.includes('socket hang up')
+            ? 'SAP dropped the connection. Try the Test (Minimal) button first.'
+            : undefined;
+
       await updateKycSapStatus(id, {
         sapCardCode: '',
         sapBpType: bpType,
@@ -97,7 +159,6 @@ export async function POST(request, { params }) {
         sapSyncError: sapErr.message,
       });
 
-      // Update sync log
       if (syncLog) {
         await updateSapSyncLog(syncLog.id, {
           status: 'failed',
@@ -110,11 +171,11 @@ export async function POST(request, { params }) {
       return NextResponse.json({
         error: `SAP Error: ${sapErr.message}`,
         sapError: sapErr.sapError || null,
-        payloadSent: bpPayload,
+        docsFound: docs.length,
+        attachmentUploaded: !!attachmentEntry,
+        attachmentWarnings,
+        hint,
         durationMs: duration,
-        hint: sapErr.message?.includes('socket hang up')
-          ? 'SAP dropped the connection. Try pushing with minimal mode first. If that works, the issue is in the data fields.'
-          : undefined,
       }, { status: 502 });
     }
 
@@ -130,7 +191,6 @@ export async function POST(request, { params }) {
       sapSyncError: '',
     });
 
-    // Update sync log
     if (syncLog) {
       await updateSapSyncLog(syncLog.id, {
         status: 'success',
@@ -140,22 +200,24 @@ export async function POST(request, { params }) {
       });
     }
 
-    // Audit log
     await createAuditEntry({
       action: 'SAP_BP_CREATED',
       actor: user.email,
       kycId: id,
-      details: `Business Partner ${cardCode} created as ${bpType}`,
+      details: `Business Partner ${cardCode} created as ${bpType}${attachmentEntry ? ` with attachment #${attachmentEntry}` : ''}`,
     });
 
-    console.log('[SAP Push] Success! CardCode:', cardCode);
+    console.log('[SAP Push] Success! CardCode:', cardCode, 'Attachment:', attachmentEntry || 'none');
 
     return NextResponse.json({
       success: true,
       cardCode,
       bpType,
+      attachmentEntry,
+      attachmentWarnings: attachmentWarnings.length > 0 ? attachmentWarnings : undefined,
+      docsAttached: docs.length,
       durationMs: duration,
-      message: `Business Partner ${cardCode} created in SAP as ${bpType === 'customer' ? 'Customer' : 'Vendor'}`,
+      message: `Business Partner ${cardCode} created in SAP as ${bpType === 'customer' ? 'Customer' : 'Vendor'}${attachmentEntry ? ` with ${docs.length} document(s) attached` : ''}`,
     });
   } catch (err) {
     console.error('[SAP Push] Unexpected error:', err);

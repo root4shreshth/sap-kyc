@@ -172,6 +172,86 @@ export async function sapLogout(cookies) {
 }
 
 /**
+ * Upload attachments to SAP B1 via /b1s/v1/Attachments2
+ * SAP requires multipart/form-data for file uploads.
+ * @param {Array} files - Array of { buffer, fileName, mimeType }
+ * @param {string} cookies - Session cookies
+ * @returns {Object} SAP Attachment response with AbsoluteEntry
+ */
+export function uploadAttachments(files, cookies) {
+  return new Promise((resolve, reject) => {
+    if (!files || files.length === 0) {
+      reject(new Error('No files to upload'));
+      return;
+    }
+
+    const config = getSapConfig();
+    const fullUrl = `${config.baseUrl}/b1s/v1/Attachments2`;
+    const parsed = new URL(fullUrl);
+    const isHttps = parsed.protocol === 'https:';
+    const boundary = `----SAPBoundary${Date.now()}`;
+
+    // Build multipart body
+    const parts = [];
+    for (const file of files) {
+      const header = [
+        `--${boundary}`,
+        `Content-Disposition: form-data; name="files"; filename="${file.fileName}"`,
+        `Content-Type: ${file.mimeType || 'application/octet-stream'}`,
+        '',
+        '',
+      ].join('\r\n');
+      parts.push(Buffer.from(header, 'utf-8'));
+      parts.push(file.buffer);
+      parts.push(Buffer.from('\r\n', 'utf-8'));
+    }
+    parts.push(Buffer.from(`--${boundary}--\r\n`, 'utf-8'));
+
+    const bodyBuffer = Buffer.concat(parts);
+
+    const options = {
+      hostname: parsed.hostname,
+      port: parsed.port || (isHttps ? 443 : 80),
+      path: parsed.pathname,
+      method: 'POST',
+      agent: isHttps ? sapAgent : undefined,
+      headers: {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
+        'Content-Length': bodyBuffer.length,
+        Cookie: cookies,
+      },
+      rejectUnauthorized: false,
+    };
+
+    const transport = isHttps ? https : http;
+    const req = transport.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        let jsonData = null;
+        if (data) {
+          try { jsonData = JSON.parse(data); } catch { jsonData = { rawText: data }; }
+        }
+        if (res.statusCode >= 400) {
+          const errMsg = jsonData?.error?.message?.value || jsonData?.error?.message || `Attachment upload failed: ${res.statusCode}`;
+          const error = new Error(errMsg);
+          error.status = res.statusCode;
+          reject(error);
+          return;
+        }
+        console.log('[SAP] Attachment uploaded, AbsoluteEntry:', jsonData?.AbsoluteEntry);
+        resolve(jsonData);
+      });
+    });
+
+    req.on('error', (err) => reject(new Error(`SAP attachment upload error: ${err.message}`)));
+    req.setTimeout(120000, () => { req.destroy(); reject(new Error('Attachment upload timed out')); });
+    req.write(bodyBuffer);
+    req.end();
+  });
+}
+
+/**
  * Create a Business Partner in SAP B1
  * @param {Object} bpData - SAP Business Partner payload
  * @param {string} cookies - Session cookies from sapLogin

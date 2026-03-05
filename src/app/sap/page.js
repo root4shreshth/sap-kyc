@@ -115,6 +115,9 @@ function KycSapCard({ entry, onPush, pushing, onExpand, expanded }) {
             <span>{entry.email}</span>
             {entry.country && <span>📍 {entry.country}</span>}
             {entry.businessPhone && <span>📞 {entry.businessPhone}</span>}
+            <span style={{ color: entry.docsCount > 0 ? '#059669' : '#dc2626' }}>
+              📎 {entry.docsCount || 0} doc{entry.docsCount !== 1 ? 's' : ''}
+            </span>
           </div>
           {isSynced && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
@@ -244,6 +247,32 @@ function KycSapCard({ entry, onPush, pushing, onExpand, expanded }) {
               ))}
             </div>
           )}
+
+          {/* Documents Status */}
+          <div style={{ padding: '12px 20px', borderTop: '1px solid #f3f4f6' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: entry.docsCount > 0 ? '#059669' : '#dc2626', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+              📎 Documents ({entry.docsCount || 0})
+            </div>
+            {entry.docsCount > 0 ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {entry.docs.map((doc, i) => (
+                  <span key={i} style={{
+                    padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 500,
+                    background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0',
+                  }}>
+                    ✅ {doc.docType || doc.fileName}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div style={{
+                padding: '8px 12px', borderRadius: 8, fontSize: 12,
+                background: '#fef2f2', color: '#991b1b', border: '1px solid #fecaca',
+              }}>
+                ⚠️ No documents uploaded — SAP may require attachments (Trade License, etc.). Upload via client portal first.
+              </div>
+            )}
+          </div>
 
           {/* Push to SAP Action Bar */}
           <div style={{
