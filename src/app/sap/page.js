@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { sapApi } from '@/lib/api-client';
 
 // ===== HELPERS =====
@@ -91,19 +92,27 @@ function KycSapCard({ entry, onPush, pushing, onExpand, expanded }) {
           fontSize: isSynced || isFailed ? 20 : 18,
           color: 'white', fontWeight: 700, flexShrink: 0,
         }}>
-          {isSynced ? '✅' : isFailed ? '❌' : (entry.businessName || entry.companyName || '?')[0].toUpperCase()}
+          {isSynced ? '✅' : isFailed ? '❌' : (entry.clientName || entry.companyName || '?')[0].toUpperCase()}
         </div>
 
         {/* Main Info */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <div style={{ fontWeight: 700, fontSize: 15, color: '#1f2937' }}>
-              {entry.businessName || entry.companyName}
+              {entry.clientName || entry.companyName}
             </div>
+            {entry.companyName && entry.clientName && entry.companyName !== entry.clientName && (
+              <span style={{ fontSize: 12, color: '#6b7280', fontWeight: 400 }}>({entry.companyName})</span>
+            )}
             <SapStatusBadge entry={entry} />
           </div>
+          {entry.businessName && entry.businessName !== entry.companyName && (
+            <div style={{ fontSize: 12, color: '#2563eb', fontWeight: 500, marginTop: 2 }}>
+              🏢 {entry.businessName}
+            </div>
+          )}
           <div style={{ fontSize: 12, color: '#6b7280', marginTop: 3, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <span>{entry.companyEmail || entry.email}</span>
+            <span>{entry.email}</span>
             {entry.country && <span>📍 {entry.country}</span>}
             {entry.businessPhone && <span>📞 {entry.businessPhone}</span>}
           </div>
@@ -464,6 +473,9 @@ export default function SapDashboard() {
 
   return (
     <div style={{ padding: '24px 32px', maxWidth: 1200, margin: '0 auto' }}>
+      <Link href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#9ca3af', textDecoration: 'none', marginBottom: 16 }}>
+        <span style={{ fontSize: 16 }}>←</span> Back to Dashboard
+      </Link>
       {/* Header */}
       <div style={{
         background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',

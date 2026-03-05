@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { AuthProvider } from '@/components/AuthProvider';
 import ProtectedLayout from '@/components/ProtectedLayout';
 import { kycApi, companyApi } from '@/lib/api-client';
@@ -118,6 +119,9 @@ function BulkImportContent() {
   return (
     <ProtectedLayout roles={['Admin']}>
       <div className="container" style={{ paddingTop: 32, maxWidth: 800 }}>
+        <Link href="/kyc" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--gray-500)', textDecoration: 'none', marginBottom: 16 }}>
+          <span style={{ fontSize: 16 }}>←</span> Back to KYC Requests
+        </Link>
         <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>Bulk KYC Import</h1>
         <p style={{ color: 'var(--gray-500)', fontSize: 14, marginBottom: 24 }}>
           Upload a CSV file to create multiple KYC requests at once.

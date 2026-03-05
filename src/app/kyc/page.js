@@ -45,6 +45,9 @@ function KycListContent() {
   return (
     <ProtectedLayout roles={['Admin', 'KYC Team']}>
       <div style={{ padding: '32px 32px 48px' }}>
+        <Link href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--gray-500)', textDecoration: 'none', marginBottom: 16 }}>
+          <span style={{ fontSize: 16 }}>←</span> Back to Dashboard
+        </Link>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
           <h1 style={{ fontSize: 24, fontWeight: 700, margin: 0, color: 'var(--navy)' }}>KYC Requests</h1>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

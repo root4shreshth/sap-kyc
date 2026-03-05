@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { AuthProvider } from '@/components/AuthProvider';
 import ProtectedLayout from '@/components/ProtectedLayout';
 import { companyApi } from '@/lib/api-client';
@@ -132,6 +133,9 @@ function CompanyProfilesContent() {
     return (
       <ProtectedLayout roles={['Admin']}>
         <div className="container" style={{ paddingTop: 32, maxWidth: 600 }}>
+          <button onClick={() => { setEditing(null); setError(''); }} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--gray-500)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginBottom: 16 }}>
+            <span style={{ fontSize: 16 }}>←</span> Back to Company Profiles
+          </button>
           <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 24 }}>
             {editing === 'new' ? 'Create Company Profile' : 'Edit Company Profile'}
           </h1>
@@ -244,6 +248,9 @@ function CompanyProfilesContent() {
   return (
     <ProtectedLayout roles={['Admin']}>
       <div className="container" style={{ paddingTop: 32 }}>
+        <Link href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--gray-500)', textDecoration: 'none', marginBottom: 16 }}>
+          <span style={{ fontSize: 16 }}>←</span> Back to Dashboard
+        </Link>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <h1 style={{ fontSize: 24, fontWeight: 600 }}>Company Profiles</h1>
           <button className="btn btn-primary" onClick={startCreate}>+ New Profile</button>

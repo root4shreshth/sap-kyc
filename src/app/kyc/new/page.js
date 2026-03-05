@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { AuthProvider } from '@/components/AuthProvider';
 import ProtectedLayout from '@/components/ProtectedLayout';
 import { kycApi, companyApi } from '@/lib/api-client';
@@ -107,6 +108,9 @@ function KycNewContent() {
   return (
     <ProtectedLayout roles={['Admin']}>
       <div className="container" style={{ paddingTop: 32, maxWidth: 600 }}>
+        <Link href="/kyc" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--gray-500)', textDecoration: 'none', marginBottom: 16 }}>
+          <span style={{ fontSize: 16 }}>←</span> Back to KYC Requests
+        </Link>
         <h1 style={{ fontSize: 24, fontWeight: 600, marginBottom: 24 }}>Create KYC Request</h1>
         <div className="card">
           <form onSubmit={handleSubmit}>

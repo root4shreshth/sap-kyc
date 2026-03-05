@@ -178,6 +178,9 @@ function TeamContent() {
           <MigrationBanner sql={migrationSql} onVerify={handleVerifyMigration} />
         )}
 
+        <Link href="/dashboard" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--gray-500)', textDecoration: 'none', marginBottom: 16 }}>
+          <span style={{ fontSize: 16 }}>←</span> Back to Dashboard
+        </Link>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <h1 style={{ fontSize: 24, fontWeight: 600 }}>Team Management</h1>
           <button className="btn btn-primary" onClick={() => setShowCreate(!showCreate)}>
