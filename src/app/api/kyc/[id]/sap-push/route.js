@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getKycById, getKycFormData, updateKycSapStatus, createAuditEntry, createSapSyncLog, updateSapSyncLog } from '@/lib/db';
 import { withSapSession, createBusinessPartner, isSapConfigured } from '@/lib/sap-client';
-import { mapKycToBusinessPartner, validateForSapPush } from '@/lib/sap-mapping';
+import { mapKycToBusinessPartner, mapKycToMinimalBusinessPartner, validateForSapPush } from '@/lib/sap-mapping';
 
 export async function POST(request, { params }) {
   const { user, error } = requireAuth(request, ['Admin']);
@@ -10,7 +10,8 @@ export async function POST(request, { params }) {
 
   try {
     const { id } = await params;
-    const { bpType } = await request.json();
+    const body = await request.json();
+    const { bpType, minimal } = body;
 
     if (!bpType || !['customer', 'vendor'].includes(bpType)) {
       return NextResponse.json({ error: 'bpType must be "customer" or "vendor"' }, { status: 400 });
@@ -58,9 +59,13 @@ export async function POST(request, { params }) {
     }
 
     // Map KYC data to SAP Business Partner structure
-    const bpPayload = mapKycToBusinessPartner(formData, kyc, bpType);
+    // Use minimal mode for testing — only sends CardCode, CardName, CardType
+    const bpPayload = minimal
+      ? mapKycToMinimalBusinessPartner(formData, kyc, bpType)
+      : mapKycToBusinessPartner(formData, kyc, bpType);
 
-    console.log('[SAP Push] Creating BP for KYC:', id, 'Type:', bpType, 'CardCode:', bpPayload.CardCode);
+    console.log('[SAP Push] Creating BP for KYC:', id, 'Type:', bpType, 'Minimal:', !!minimal, 'CardCode:', bpPayload.CardCode);
+    console.log('[SAP Push] Payload:', JSON.stringify(bpPayload, null, 2));
 
     // Create sync log entry
     const syncLog = await createSapSyncLog({
@@ -105,6 +110,11 @@ export async function POST(request, { params }) {
       return NextResponse.json({
         error: `SAP Error: ${sapErr.message}`,
         sapError: sapErr.sapError || null,
+        payloadSent: bpPayload,
+        durationMs: duration,
+        hint: sapErr.message?.includes('socket hang up')
+          ? 'SAP dropped the connection. Try pushing with minimal mode first. If that works, the issue is in the data fields.'
+          : undefined,
       }, { status: 502 });
     }
 

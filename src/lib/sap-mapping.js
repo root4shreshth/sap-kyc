@@ -240,7 +240,50 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
     bp.BPBankAccounts = bankAccounts;
   }
 
-  return bp;
+  // Clean the payload — remove all empty string, null, undefined values
+  // SAP B1 often drops connection when it receives empty strings for optional fields
+  return cleanSapPayload(bp);
+}
+
+/**
+ * Recursively remove empty/null/undefined values from SAP payload.
+ * SAP Service Layer prefers missing fields over empty strings.
+ */
+function cleanSapPayload(obj) {
+  if (Array.isArray(obj)) {
+    return obj.map(cleanSapPayload).filter(item => item !== null && item !== undefined);
+  }
+  if (obj && typeof obj === 'object') {
+    const cleaned = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value === null || value === undefined || value === '') continue;
+      const cleanedValue = cleanSapPayload(value);
+      if (cleanedValue === null || cleanedValue === undefined || cleanedValue === '') continue;
+      if (Array.isArray(cleanedValue) && cleanedValue.length === 0) continue;
+      cleaned[key] = cleanedValue;
+    }
+    return Object.keys(cleaned).length > 0 ? cleaned : null;
+  }
+  return obj;
+}
+
+/**
+ * Generate a minimal BP payload for testing SAP connection.
+ * Only includes the absolute minimum fields required to create a BP.
+ */
+export function mapKycToMinimalBusinessPartner(formData, kycRecord, bpType) {
+  const bi = formData.businessInfo || {};
+  const cd = formData.companyDetails || {};
+  const companyName = cd.companyName || bi.businessName || kycRecord.companyName || '';
+  const cardCode = generateCardCode(kycRecord.id, companyName, bpType);
+
+  return {
+    CardCode: cardCode,
+    CardName: companyName.substring(0, 100),
+    CardType: bpType === 'customer' ? 'cCustomer' : 'cSupplier',
+    Phone1: cd.officePhone || bi.phone || undefined,
+    EmailAddress: cd.email || kycRecord.email || undefined,
+  };
 }
 
 /**

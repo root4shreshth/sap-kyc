@@ -285,36 +285,55 @@ function KycSapCard({ entry, onPush, pushing, onExpand, expanded }) {
                     ))}
                   </div>
                 </div>
-                <button
-                  onClick={() => onPush(entry.id, bpType)}
-                  disabled={pushing === entry.id}
-                  style={{
-                    padding: '10px 24px',
-                    borderRadius: 10,
-                    border: 'none',
-                    background: pushing === entry.id
-                      ? '#9ca3af'
-                      : isFailed
-                        ? 'linear-gradient(135deg, #ef4444, #dc2626)'
-                        : 'linear-gradient(135deg, #2563eb, #7c3aed)',
-                    color: 'white',
-                    fontSize: 14,
-                    fontWeight: 700,
-                    cursor: pushing === entry.id ? 'not-allowed' : 'pointer',
-                    display: 'flex', alignItems: 'center', gap: 8,
-                    minWidth: 180,
-                    justifyContent: 'center',
-                    boxShadow: pushing === entry.id ? 'none' : '0 4px 12px rgba(37,99,235,0.3)',
-                  }}
-                >
-                  {pushing === entry.id ? (
-                    <><span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span> Pushing...</>
-                  ) : isFailed ? (
-                    <>🔄 Retry Push to SAP</>
-                  ) : (
-                    <>🚀 Push to SAP</>
-                  )}
-                </button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <button
+                    onClick={() => onPush(entry.id, bpType, true)}
+                    disabled={pushing === entry.id}
+                    title="Send only CardCode, CardName, CardType — for testing SAP connection"
+                    style={{
+                      padding: '10px 14px',
+                      borderRadius: 10,
+                      border: '1px solid #d1d5db',
+                      background: 'white',
+                      color: '#4b5563',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: pushing === entry.id ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    🧪 Test (Minimal)
+                  </button>
+                  <button
+                    onClick={() => onPush(entry.id, bpType)}
+                    disabled={pushing === entry.id}
+                    style={{
+                      padding: '10px 24px',
+                      borderRadius: 10,
+                      border: 'none',
+                      background: pushing === entry.id
+                        ? '#9ca3af'
+                        : isFailed
+                          ? 'linear-gradient(135deg, #ef4444, #dc2626)'
+                          : 'linear-gradient(135deg, #2563eb, #7c3aed)',
+                      color: 'white',
+                      fontSize: 14,
+                      fontWeight: 700,
+                      cursor: pushing === entry.id ? 'not-allowed' : 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      minWidth: 180,
+                      justifyContent: 'center',
+                      boxShadow: pushing === entry.id ? 'none' : '0 4px 12px rgba(37,99,235,0.3)',
+                    }}
+                  >
+                    {pushing === entry.id ? (
+                      <><span style={{ animation: 'spin 1s linear infinite', display: 'inline-block' }}>⟳</span> Pushing...</>
+                    ) : isFailed ? (
+                      <>🔄 Retry (Full Data)</>
+                    ) : (
+                      <>🚀 Push to SAP</>
+                    )}
+                  </button>
+                </div>
               </>
             )}
           </div>
@@ -418,10 +437,11 @@ export default function SapDashboard() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  const handlePush = async (kycId, bpType) => {
+  const handlePush = async (kycId, bpType, minimal = false) => {
     setPushing(kycId);
     try {
-      await sapApi.pushToSap(kycId, bpType);
+      const result = await sapApi.pushToSap(kycId, bpType, minimal);
+      alert(`✅ Success! ${result.message || `CardCode: ${result.cardCode}`}`);
       await loadData();
     } catch (err) {
       alert(`SAP Push Error: ${err.message}`);

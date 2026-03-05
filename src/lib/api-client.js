@@ -106,11 +106,11 @@ export const sapApi = {
     fetch(`/api/sap/field-mapping/${kycId}`, { headers: getHeaders() }).then(handleResponse),
   queue: () =>
     fetch('/api/sap/queue', { headers: getHeaders() }).then(handleResponse),
-  pushToSap: (kycId, bpType) =>
+  pushToSap: (kycId, bpType, minimal = false) =>
     fetch(`/api/kyc/${kycId}/sap-push`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ bpType }),
+      body: JSON.stringify({ bpType, ...(minimal ? { minimal: true } : {}) }),
     }).then(handleResponse),
 };
 
