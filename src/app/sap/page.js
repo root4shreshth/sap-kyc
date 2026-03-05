@@ -470,10 +470,19 @@ export default function SapDashboard() {
     setPushing(kycId);
     try {
       const result = await sapApi.pushToSap(kycId, bpType, minimal);
-      alert(`✅ Success! ${result.message || `CardCode: ${result.cardCode}`}`);
+      const parts = [`✅ Success! ${result.message || `CardCode: ${result.cardCode}`}`];
+      if (result.partialWarnings?.length > 0) parts.push(`\n⚠️ Warnings: ${result.partialWarnings.join(', ')}`);
+      if (result.stageResults) parts.push(`\nStages: ${JSON.stringify(result.stageResults)}`);
+      alert(parts.join(''));
       await loadData();
     } catch (err) {
-      alert(`SAP Push Error: ${err.message}`);
+      // Show detailed error with hints and stage info
+      const errData = err.responseData || {};
+      const parts = [`SAP Push Error: ${err.message}`];
+      if (errData.hint) parts.push(`\n💡 Hint: ${errData.hint}`);
+      if (errData.stageResults) parts.push(`\nStages: ${JSON.stringify(errData.stageResults)}`);
+      if (errData.attachmentWarnings?.length > 0) parts.push(`\n📎 Attachment issues: ${errData.attachmentWarnings.join(', ')}`);
+      alert(parts.join(''));
       await loadData();
     }
     setPushing(null);

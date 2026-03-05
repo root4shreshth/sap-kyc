@@ -7,7 +7,11 @@ function getHeaders() {
 
 async function handleResponse(res) {
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Request failed');
+  if (!res.ok) {
+    const err = new Error(data.error || 'Request failed');
+    err.responseData = data; // Preserve full response (hints, stageResults, etc.)
+    throw err;
+  }
   return data;
 }
 
