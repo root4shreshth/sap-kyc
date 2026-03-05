@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getKycById, getKycFormData, getDocsByKycId, updateKycSapStatus, createAuditEntry, createSapSyncLog, updateSapSyncLog } from '@/lib/db';
-import { withSapSession, createBusinessPartner, updateBusinessPartner, uploadAttachments, isSapConfigured } from '@/lib/sap-client';
+import { withSapSession, createBusinessPartner, updateBusinessPartner, uploadAttachments, isSapConfigured, createPostAgent } from '@/lib/sap-client';
 import { mapKycToBusinessPartner, mapKycToMinimalBusinessPartner, mapKycToAddresses, mapKycToContacts, getCardCode, validateForSapPush } from '@/lib/sap-mapping';
 import { downloadFile } from '@/lib/storage';
 
@@ -12,7 +12,7 @@ export async function POST(request, { params }) {
   try {
     const { id } = await params;
     const body = await request.json();
-    const { bpType, minimal } = body;
+    const { bpType, minimal, skipAttachments } = body;
 
     if (!bpType || !['customer', 'vendor'].includes(bpType)) {
       return NextResponse.json({ error: 'bpType must be "customer" or "vendor"' }, { status: 400 });
@@ -65,16 +65,24 @@ export async function POST(request, { params }) {
 
     const cardCodeGenerated = getCardCode(formData, kyc, bpType);
 
-    console.log('[SAP Push] Creating BP for KYC:', id, 'Type:', bpType, 'Minimal:', !!minimal, 'CardCode:', bpPayload.CardCode);
+    console.log('[SAP Push] Creating BP for KYC:', id, 'Type:', bpType, 'Minimal:', !!minimal, 'SkipAttachments:', !!skipAttachments, 'CardCode:', bpPayload.CardCode);
     console.log('[SAP Push] Stage 1 Payload:', JSON.stringify(bpPayload, null, 2));
 
-    // Get KYC documents for attachment
+    // Get KYC documents for attachment (unless skipping)
     let docs = [];
-    try {
-      docs = await getDocsByKycId(id);
-      console.log(`[SAP Push] Found ${docs.length} documents for KYC:`, id);
-    } catch (docErr) {
-      console.warn('[SAP Push] Could not fetch documents:', docErr.message);
+    if (!minimal && !skipAttachments) {
+      try {
+        docs = await getDocsByKycId(id);
+        console.log(`[SAP Push] Found ${docs.length} documents for KYC:`, id);
+        // Log each doc's storage path for debugging
+        docs.forEach((d, i) => {
+          console.log(`[SAP Push]   Doc ${i + 1}: type="${d.docType}", file="${d.fileName}", storagePath="${d.driveFileId}"`);
+        });
+      } catch (docErr) {
+        console.warn('[SAP Push] Could not fetch documents:', docErr.message);
+      }
+    } else {
+      console.log(`[SAP Push] Skipping attachments (minimal=${!!minimal}, skipAttachments=${!!skipAttachments})`);
     }
 
     // Create sync log entry
@@ -95,46 +103,58 @@ export async function POST(request, { params }) {
 
     try {
       sapResult = await withSapSession(async (cookies, agent) => {
-        // ====== STAGE 1: Create BP with core fields only (POST) ======
-        // This is the safest payload — no sub-collections.
-        // SAP Service Layer handles this without 502 proxy errors.
-        console.log('[SAP Push] Stage 1: Creating core BP...');
+        console.log('[SAP Push] Session established. Starting push...');
 
-        // Optionally upload attachments first
-        if (docs.length > 0 && !minimal) {
+        // ====== ATTACHMENT UPLOAD (before BP creation) ======
+        if (docs.length > 0) {
           console.log(`[SAP Push] Downloading ${docs.length} files from Supabase...`);
           const filesToUpload = [];
 
           for (const doc of docs) {
             try {
+              console.log(`[SAP Push] Downloading: "${doc.fileName}" from path: "${doc.driveFileId}"`);
               const { buffer, mimeType } = await downloadFile(doc.driveFileId);
+              console.log(`[SAP Push] Downloaded: "${doc.fileName}" (${buffer.length} bytes, type: ${mimeType})`);
               filesToUpload.push({
                 buffer,
                 fileName: doc.fileName || 'document.pdf',
                 mimeType: mimeType || 'application/pdf',
               });
             } catch (dlErr) {
-              console.warn(`[SAP Push] Failed to download ${doc.fileName}:`, dlErr.message);
-              attachmentWarnings.push(`Could not download: ${doc.fileName}`);
+              console.warn(`[SAP Push] Failed to download "${doc.fileName}" (path: "${doc.driveFileId}"):`, dlErr.message);
+              attachmentWarnings.push(`Download failed: ${doc.fileName} — ${dlErr.message}`);
             }
           }
 
           if (filesToUpload.length > 0) {
             try {
-              const attachResult = await uploadAttachments(filesToUpload, cookies, agent);
-              attachmentEntry = attachResult?.AbsoluteEntry;
-              stageResults.attachments = 'success';
-              console.log('[SAP Push] Attachments uploaded, entry:', attachmentEntry);
+              console.log(`[SAP Push] Uploading ${filesToUpload.length} files to SAP Attachments2...`);
+              // Use a FRESH agent for attachment upload (same fix as BP creation)
+              const attachAgent = createPostAgent();
+              try {
+                const attachResult = await uploadAttachments(filesToUpload, cookies, attachAgent);
+                attachmentEntry = attachResult?.AbsoluteEntry;
+                stageResults.attachments = `success (entry: ${attachmentEntry})`;
+                console.log('[SAP Push] Attachments uploaded, AbsoluteEntry:', attachmentEntry);
+              } finally {
+                try { attachAgent.destroy(); } catch { /* ignore */ }
+              }
             } catch (attErr) {
-              console.warn('[SAP Push] Attachment upload failed:', attErr.message);
-              attachmentWarnings.push(`Attachment upload failed: ${attErr.message}`);
+              console.warn('[SAP Push] Attachment upload to SAP failed:', attErr.message);
+              attachmentWarnings.push(`SAP upload failed: ${attErr.message}`);
               stageResults.attachments = `failed: ${attErr.message}`;
-              // Continue without attachments
+              // Continue without attachments — BP creation may still work
             }
+          } else {
+            console.warn('[SAP Push] All document downloads failed — no files to upload to SAP');
+            stageResults.attachments = `skipped (all ${docs.length} downloads failed)`;
           }
+        } else if (skipAttachments) {
+          stageResults.attachments = 'skipped (user chose to skip)';
         }
 
-        // Create the core BP
+        // ====== STAGE 1: Create BP with core fields only (POST) ======
+        console.log('[SAP Push] Stage 1: Creating core BP...');
         const createPayload = { ...bpPayload };
         if (attachmentEntry) {
           createPayload.AttachmentEntry = attachmentEntry;
@@ -194,11 +214,19 @@ export async function POST(request, { params }) {
       if (sapErr.isProxy || sapErr.message?.includes('502') || sapErr.message?.includes('Proxy')) {
         hint = 'SAP proxy returned 502. The Service Layer may be overloaded. Wait a minute and try again, or use Test (Minimal) first.';
       } else if (sapErr.message?.includes('Attachment') || sapErr.message?.includes('101')) {
-        hint = docs.length === 0
-          ? 'SAP requires document attachments. Upload documents through the client portal first.'
-          : 'Documents exist but failed to upload to SAP. Check server logs.';
+        if (skipAttachments || minimal) {
+          hint = 'SAP requires an attachment to create a Business Partner. This may be a company policy. Try pushing with attachments enabled, or check SAP B1 configuration.';
+        } else if (docs.length === 0) {
+          hint = 'SAP requires document attachments. Upload documents through the client portal first.';
+        } else if (stageResults.attachments?.startsWith('failed') || stageResults.attachments?.includes('downloads failed')) {
+          hint = 'Documents exist in the system but could not be downloaded from storage or uploaded to SAP. Check Supabase storage and SAP Attachments2 endpoint.';
+        } else {
+          hint = 'Attachment was uploaded but SAP still rejected the BP. The AttachmentEntry reference may be invalid. Try "Push (No Docs)" to test without attachments.';
+        }
       } else if (sapErr.message?.includes('socket hang up')) {
         hint = 'SAP dropped the connection. Try the Test (Minimal) button first.';
+      } else if (sapErr.message?.includes('All BP creation strategies failed')) {
+        hint = 'All connection strategies failed. Run the Deep Test to diagnose which strategy works.';
       }
 
       await updateKycSapStatus(id, {
@@ -222,6 +250,7 @@ export async function POST(request, { params }) {
         sapError: sapErr.sapError || null,
         docsFound: docs.length,
         attachmentUploaded: !!attachmentEntry,
+        attachmentEntry,
         attachmentWarnings,
         stageResults,
         hint,
