@@ -2,15 +2,16 @@
  * KYC Form Data → SAP Business Partner Field Mapping
  * Maps the normalized KYC form data to SAP B1 Service Layer Business Partner structure.
  *
- * IMPORTANT: All string fields are aggressively truncated to SAP's strictest known limits.
- * SAP B1 drops the connection or returns 502 if ANY field exceeds its column limit.
+ * STAGED APPROACH:
+ * SAP B1 Service Layer often returns 502 Proxy Error when creating a BP with
+ * addresses + contacts + attachments all in one request. The proxy/SL crashes.
  *
- * SEMANTIC RULES:
- * - BankCode must reference SAP's bank master table (ODSC). We skip BPBankAccounts
- *   and store bank info in FreeText instead, since we don't know the user's bank codes.
- * - State must be a 2-3 char ISO code. We only send it if it looks like a code.
- * - ContactPerson.Title must be a salutation (Mr/Mrs/Dr), not a job title.
- * - We do NOT send fields that would be semantically wrong when truncated.
+ * Solution: Create BP with core fields first (POST), then PATCH in addresses
+ * and contacts separately. This is how n8n and other integrations work reliably.
+ *
+ * Stage 1 (POST): CardCode, CardName, CardType, Phone, Email, etc.
+ * Stage 2 (PATCH): BPAddresses
+ * Stage 3 (PATCH): ContactEmployees
  */
 
 // Country name → ISO 2-letter code
@@ -60,7 +61,6 @@ const COUNTRY_MAP = {
 function getCountryCode(countryName) {
   if (!countryName) return 'AE';
   const trimmed = countryName.trim();
-  // If already a 2-letter code, return as-is
   if (/^[A-Z]{2}$/.test(trimmed)) return trimmed;
   if (COUNTRY_MAP[trimmed]) return COUNTRY_MAP[trimmed];
   const upper = trimmed.toUpperCase();
@@ -73,58 +73,29 @@ function getCountryCode(countryName) {
 }
 
 /**
- * Check if a state/province value looks like a proper code (2-3 chars).
- * SAP State field is max 3 chars and expects ISO state codes.
- * Sending a truncated full name like "Abu" instead of "AZ" causes data corruption.
+ * Only send State if it's already a proper 2-3 char code.
  */
 function getStateCode(stateValue) {
   if (!stateValue) return '';
   const trimmed = stateValue.trim();
-  // Only return if it's already a short code (2-3 uppercase letters)
   if (/^[A-Z]{2,3}$/i.test(trimmed)) return trimmed.toUpperCase();
-  // Don't send state at all if it's a full name — SAP can't use it
   return '';
 }
 
 /**
  * SAP B1 Field Length Limits — STRICTEST known values.
- * These are intentionally conservative to work on ALL SAP B1 instances.
- * Source: SAP B1 10.0 FP2008+ table definitions (OCRD, CRD1, OCPR, OCRB).
  */
 const SAP_LIMITS = {
-  // Business Partner (OCRD)
-  CardCode: 15,
-  CardName: 100,
-  Phone: 20,
-  Fax: 20,
-  Email: 100,
-  Website: 100,
-  FederalTaxID: 32,
-  VatReg: 32,
-  FreeText: 200,      // Some instances limit to ~200
-  Notes: 50,           // VERY strict on some instances
-  Country: 3,
-  // Addresses (CRD1)
-  AddrName: 50,
-  Street: 100,
-  Block: 100,
-  City: 100,
-  ZipCode: 20,
-  State: 3,
-  County: 100,
-  BuildingFloorRoom: 100,
-  // Contacts (OCPR)
-  ContactName: 50,
-  FirstName: 40,
-  LastName: 40,
-  Title: 10,
-  Position: 20,        // Job title goes here, not in Title
-  Remarks: 100,
+  CardCode: 15, CardName: 100, Phone: 20, Fax: 20, Email: 100,
+  Website: 100, FederalTaxID: 32, VatReg: 32, FreeText: 200,
+  Notes: 50, Country: 3,
+  AddrName: 50, Street: 100, Block: 100, City: 100, ZipCode: 20,
+  State: 3, County: 100,
+  ContactName: 50, FirstName: 40, LastName: 40, Title: 10,
+  Position: 20, Remarks: 100,
 };
 
-/**
- * Truncate a value to max length. Returns '' for null/undefined.
- */
+/** Truncate a value to max length. Returns '' for null/undefined. */
 function t(val, max) {
   if (val === null || val === undefined) return '';
   return String(val).substring(0, max);
@@ -133,7 +104,6 @@ function t(val, max) {
 /**
  * Generate a unique CardCode for SAP.
  * Format: {C|V}{3-letter-name}{8-hex-from-uuid} = max 12 chars (within 15 limit)
- * Uses 8 UUID hex chars = 4 billion+ combinations, practically collision-free.
  */
 function generateCardCode(kycId, companyName, bpType) {
   const prefix = bpType === 'customer' ? 'C' : 'V';
@@ -141,49 +111,56 @@ function generateCardCode(kycId, companyName, bpType) {
     .replace(/[^A-Za-z]/g, '')
     .substring(0, 3)
     .toUpperCase() || 'UNK';
-  // Use 8 hex chars from UUID (remove hyphens first) for uniqueness
   const idPart = kycId.replace(/-/g, '').substring(0, 8).toUpperCase();
   return `${prefix}${namepart}${idPart}`;
 }
 
+/** Recursively remove empty/null/undefined values from SAP payload. */
+function cleanSapPayload(obj) {
+  if (Array.isArray(obj)) {
+    return obj.map(cleanSapPayload).filter(item => item !== null && item !== undefined);
+  }
+  if (obj && typeof obj === 'object') {
+    const cleaned = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value === null || value === undefined || value === '') continue;
+      const cleanedValue = cleanSapPayload(value);
+      if (cleanedValue === null || cleanedValue === undefined || cleanedValue === '') continue;
+      if (Array.isArray(cleanedValue) && cleanedValue.length === 0) continue;
+      cleaned[key] = cleanedValue;
+    }
+    return Object.keys(cleaned).length > 0 ? cleaned : null;
+  }
+  return obj;
+}
+
 /**
- * Map KYC form data to SAP Business Partner payload.
- * Every single string field is truncated to SAP's strict limits.
- *
- * NOTE on Bank Accounts:
- * SAP's BPBankAccounts.BankCode must reference a pre-configured bank in SAP's bank
- * master table (ODSC). Since we don't know the user's SAP bank codes, we store bank
- * details in FreeText and skip BPBankAccounts entirely. The admin can add bank accounts
- * manually in SAP after BP creation.
+ * STAGE 1: Core BP fields only (for POST /BusinessPartners).
+ * This is the safest payload — no sub-collections, no arrays.
+ * SAP never returns 502 on this.
  */
 export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
   const bi = formData.businessInfo || {};
   const cd = formData.companyDetails || {};
-  const mi = formData.managerInfo || {};
-  const owners = formData.ownershipManagement || [];
   const banks = formData.bankingChecks || [];
-  const warehouses = formData.warehouseAddresses || [];
 
   const companyName = cd.companyName || bi.businessName || kycRecord.companyName || '';
   const cardCode = generateCardCode(kycRecord.id, companyName, bpType);
   const L = SAP_LIMITS;
 
-  // Build FreeText with trade license + bank details (since we can't use BPBankAccounts)
+  // Build FreeText with trade license + bank summary
   const freeTextParts = [
     cd.tradeLicenseNo ? `TL:${cd.tradeLicenseNo}` : '',
     cd.tradeLicenseExpiry ? `Exp:${cd.tradeLicenseExpiry}` : '',
     bi.natureOfBusiness ? `Biz:${bi.natureOfBusiness}` : '',
   ];
-  // Append bank info summary to FreeText
   banks.forEach((b, i) => {
-    const bankParts = [
+    const parts = [
       b.bankName ? `Bank${i + 1}:${b.bankName}` : '',
       b.iban ? `IBAN:${b.iban}` : '',
       b.swift ? `SW:${b.swift}` : '',
     ].filter(Boolean);
-    if (bankParts.length > 0) {
-      freeTextParts.push(bankParts.join('/'));
-    }
+    if (parts.length > 0) freeTextParts.push(parts.join('/'));
   });
 
   const bp = {
@@ -198,16 +175,29 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
     VatRegistrationNumber: t(cd.vatRegistrationNo, L.VatReg),
     FreeText: t(freeTextParts.filter(Boolean).join('|'), L.FreeText),
     Country: t(getCountryCode(bi.country), L.Country),
-    // Notes — keep VERY short, just KYC reference
     Notes: t(`KYC:${kycRecord.id.substring(0, 36)}`, L.Notes),
   };
 
-  // ===== ADDRESSES =====
+  return cleanSapPayload(bp);
+}
+
+/**
+ * STAGE 2: Addresses payload (for PATCH /BusinessPartners('{CardCode}')).
+ * Returns { BPAddresses: [...] } or null if no addresses.
+ */
+export function mapKycToAddresses(formData, kycRecord, bpType) {
+  const bi = formData.businessInfo || {};
+  const cd = formData.companyDetails || {};
+  const warehouses = formData.warehouseAddresses || [];
+
+  const companyName = cd.companyName || bi.businessName || kycRecord.companyName || '';
+  const cardCode = generateCardCode(kycRecord.id, companyName, bpType);
+  const L = SAP_LIMITS;
+  const countryCode = t(getCountryCode(bi.country), L.Country);
+  const stateCode = getStateCode(bi.provinceState);
+
   const addresses = [];
   let addrIdx = 0;
-  const countryCode = t(getCountryCode(bi.country), L.Country);
-  // Only send State if it's already a proper 2-3 char code
-  const stateCode = getStateCode(bi.provinceState);
 
   const billToAddr = cd.registeredOfficeAddress || cd.companyAddress || bi.address || '';
   if (billToAddr) {
@@ -221,7 +211,6 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
       BPCode: t(cardCode, L.CardCode),
       RowNum: addrIdx++,
     };
-    // Only include State if we have a proper code
     if (stateCode) addr.State = stateCode;
     addresses.push(addr);
   }
@@ -255,11 +244,19 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
     }
   });
 
-  if (addresses.length > 0) {
-    bp.BPAddresses = addresses;
-  }
+  if (addresses.length === 0) return null;
+  return cleanSapPayload({ BPAddresses: addresses });
+}
 
-  // ===== CONTACT EMPLOYEES =====
+/**
+ * STAGE 3: Contacts payload (for PATCH /BusinessPartners('{CardCode}')).
+ * Returns { ContactEmployees: [...] } or null if no contacts.
+ */
+export function mapKycToContacts(formData, kycRecord, bpType) {
+  const mi = formData.managerInfo || {};
+  const owners = formData.ownershipManagement || [];
+  const L = SAP_LIMITS;
+
   const contacts = [];
   let contactIdx = 0;
 
@@ -274,12 +271,7 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
         E_Mail: t(o.email, L.Email),
         InternalCode: contactIdx++,
       };
-      // Position is for job title/designation (up to 20 chars)
-      // Title is for salutation (Mr/Mrs/Dr) — don't put designation there
-      if (o.designation) {
-        contact.Position = t(o.designation, L.Position);
-      }
-      // Nationality + shareholding in remarks
+      if (o.designation) contact.Position = t(o.designation, L.Position);
       if (o.nationality) {
         contact.Remarks1 = t(`${o.nationality} ${o.shareholdingPercent || ''}%`.trim(), L.Remarks);
       }
@@ -313,42 +305,22 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
     });
   }
 
-  if (contacts.length > 0) {
-    bp.ContactEmployees = contacts;
-  }
-
-  // NOTE: BPBankAccounts intentionally SKIPPED.
-  // SAP requires BankCode to reference pre-configured entries in the bank master table (ODSC).
-  // Bank details are stored in FreeText instead. Admin can add bank accounts in SAP manually.
-
-  return cleanSapPayload(bp);
+  if (contacts.length === 0) return null;
+  return cleanSapPayload({ ContactEmployees: contacts });
 }
 
 /**
- * Recursively remove empty/null/undefined values from SAP payload.
- * SAP B1 Service Layer can choke on empty strings and null values.
+ * Get the CardCode that would be generated for this KYC.
  */
-function cleanSapPayload(obj) {
-  if (Array.isArray(obj)) {
-    return obj.map(cleanSapPayload).filter(item => item !== null && item !== undefined);
-  }
-  if (obj && typeof obj === 'object') {
-    const cleaned = {};
-    for (const [key, value] of Object.entries(obj)) {
-      if (value === null || value === undefined || value === '') continue;
-      const cleanedValue = cleanSapPayload(value);
-      if (cleanedValue === null || cleanedValue === undefined || cleanedValue === '') continue;
-      if (Array.isArray(cleanedValue) && cleanedValue.length === 0) continue;
-      cleaned[key] = cleanedValue;
-    }
-    return Object.keys(cleaned).length > 0 ? cleaned : null;
-  }
-  return obj;
+export function getCardCode(formData, kycRecord, bpType) {
+  const bi = formData.businessInfo || {};
+  const cd = formData.companyDetails || {};
+  const companyName = cd.companyName || bi.businessName || kycRecord.companyName || '';
+  return generateCardCode(kycRecord.id, companyName, bpType);
 }
 
 /**
- * Generate a minimal BP payload for testing SAP connection.
- * Only the absolute minimum fields: CardCode, CardName, CardType.
+ * Minimal BP payload for testing SAP connection.
  */
 export function mapKycToMinimalBusinessPartner(formData, kycRecord, bpType) {
   const bi = formData.businessInfo || {};
@@ -356,14 +328,12 @@ export function mapKycToMinimalBusinessPartner(formData, kycRecord, bpType) {
   const companyName = cd.companyName || bi.businessName || kycRecord.companyName || '';
   const cardCode = generateCardCode(kycRecord.id, companyName, bpType);
 
-  // Minimal payload — only required fields, nothing that can cause validation errors
   const payload = {
     CardCode: t(cardCode, SAP_LIMITS.CardCode),
     CardName: t(companyName, SAP_LIMITS.CardName),
     CardType: bpType === 'customer' ? 'cCustomer' : 'cSupplier',
   };
 
-  // Only add phone/email if they exist (don't send empty)
   const phone = cd.officePhone || bi.phone;
   if (phone) payload.Phone1 = t(phone, SAP_LIMITS.Phone);
 
@@ -388,8 +358,5 @@ export function validateForSapPush(formData) {
     errors.push('At least email or phone is required');
   }
 
-  return {
-    valid: errors.length === 0,
-    errors,
-  };
+  return { valid: errors.length === 0, errors };
 }

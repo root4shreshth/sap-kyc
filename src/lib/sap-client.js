@@ -5,6 +5,12 @@
  * Uses native https module (not fetch) to support self-signed SSL certs on on-prem SAP.
  */
 
+// Required for on-prem SAP with self-signed certs.
+// The per-agent rejectUnauthorized:false handles direct connections,
+// but Node.js internal TLS verification still checks this env var
+// for certain code paths (proxy chains, redirects, etc).
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 import https from 'https';
 import http from 'http';
 import { URL } from 'url';
@@ -92,10 +98,27 @@ function sapRequest(method, path, body = null, cookies = '', agent = null) {
         if (res.statusCode >= 400) {
           // Log full response for debugging SAP errors
           console.error(`[SAP] HTTP ${res.statusCode} ${method} ${path}:`, data?.substring(0, 500));
-          const errMsg = jsonData?.error?.message?.value || jsonData?.error?.message || jsonData?.rawText?.substring(0, 200) || `SAP request failed with status ${res.statusCode}`;
+
+          // Extract clean error message — handle HTML responses (502 Proxy Error etc.)
+          let errMsg;
+          if (jsonData?.error?.message?.value) {
+            errMsg = jsonData.error.message.value;
+          } else if (jsonData?.error?.message && typeof jsonData.error.message === 'string') {
+            errMsg = jsonData.error.message;
+          } else if (data?.includes('<html') || data?.includes('<!DOCTYPE')) {
+            // SAP proxy returned HTML (502/503) — extract meaningful text
+            const titleMatch = data.match(/<title>([^<]+)<\/title>/i);
+            errMsg = titleMatch
+              ? `SAP Proxy: ${titleMatch[1]} (HTTP ${res.statusCode})`
+              : `SAP proxy returned HTTP ${res.statusCode} — Service Layer may be overloaded or crashed`;
+          } else {
+            errMsg = jsonData?.rawText?.substring(0, 200) || `SAP request failed with status ${res.statusCode}`;
+          }
+
           const error = new Error(errMsg);
           error.status = res.statusCode;
-          error.sapError = jsonData?.error || jsonData || null;
+          error.sapError = jsonData?.error || null;
+          error.isProxy = res.statusCode === 502 || res.statusCode === 503;
           reject(error);
           return;
         }
@@ -310,6 +333,17 @@ export async function createBusinessPartner(bpData, cookies, agent = null) {
   console.log('[SAP] Creating BP, payload keys:', Object.keys(bpData).join(', '));
   const { data } = await sapRequestWithRetry('POST', '/b1s/v1/BusinessPartners', bpData, cookies, 3, agent);
   console.log('[SAP] Business Partner created:', data?.CardCode);
+  return data;
+}
+
+/**
+ * Update (PATCH) a Business Partner in SAP B1.
+ * Used for staged updates — first create minimal BP, then patch in addresses/contacts.
+ */
+export async function updateBusinessPartner(cardCode, patchData, cookies, agent = null) {
+  console.log('[SAP] Patching BP:', cardCode, 'keys:', Object.keys(patchData).join(', '));
+  const { data } = await sapRequestWithRetry('PATCH', `/b1s/v1/BusinessPartners('${cardCode}')`, patchData, cookies, 3, agent);
+  console.log('[SAP] Business Partner updated:', cardCode);
   return data;
 }
 
