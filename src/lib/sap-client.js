@@ -2,13 +2,11 @@
  * SAP B1 Service Layer Client
  * Handles authentication, session management, and API calls to SAP Business One.
  * Uses cookie-based session auth (B1SESSION + ROUTEID).
- * Self-signed SSL certs are allowed (common in on-prem SAP installs).
+ * Uses native https module (not fetch) to support self-signed SSL certs on on-prem SAP.
  */
 
 import https from 'https';
-
-// Allow self-signed certificates for on-prem SAP
-const agent = new https.Agent({ rejectUnauthorized: false });
+import { URL } from 'url';
 
 function getSapConfig() {
   return {
@@ -20,55 +18,84 @@ function getSapConfig() {
 }
 
 /**
- * Make an HTTP request to SAP Service Layer
+ * Make an HTTPS request to SAP Service Layer using native https module.
+ * This properly supports rejectUnauthorized: false for self-signed certs.
  */
-async function sapRequest(method, path, body = null, cookies = '') {
-  const config = getSapConfig();
-  const url = `${config.baseUrl}${path}`;
+function sapRequest(method, path, body = null, cookies = '') {
+  return new Promise((resolve, reject) => {
+    const config = getSapConfig();
+    const fullUrl = `${config.baseUrl}${path}`;
+    const parsed = new URL(fullUrl);
 
-  const headers = {
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
-  };
-  if (cookies) {
-    headers.Cookie = cookies;
-  }
+    const bodyStr = body ? JSON.stringify(body) : null;
 
-  const options = {
-    method,
-    headers,
-    agent,
-  };
+    const options = {
+      hostname: parsed.hostname,
+      port: parsed.port || 443,
+      path: parsed.pathname + parsed.search,
+      method,
+      rejectAuthorized: false,
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      // This is the key — allows self-signed certs on on-prem SAP
+      rejectUnauthorized: false,
+    };
 
-  if (body) {
-    options.body = JSON.stringify(body);
-  }
-
-  const response = await fetch(url, options);
-
-  // Extract set-cookie headers for session management
-  const setCookies = response.headers.getSetCookie?.() || [];
-  const cookieString = setCookies.map(c => c.split(';')[0]).join('; ');
-
-  let data = null;
-  const text = await response.text();
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { rawText: text };
+    if (cookies) {
+      options.headers.Cookie = cookies;
     }
-  }
 
-  if (!response.ok) {
-    const errMsg = data?.error?.message?.value || data?.error?.message || `SAP request failed with status ${response.status}`;
-    const error = new Error(errMsg);
-    error.status = response.status;
-    error.sapError = data?.error || null;
-    throw error;
-  }
+    if (bodyStr) {
+      options.headers['Content-Length'] = Buffer.byteLength(bodyStr);
+    }
 
-  return { data, cookies: cookieString || cookies, status: response.status };
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        // Extract Set-Cookie headers for session management
+        const setCookies = res.headers['set-cookie'] || [];
+        const cookieString = setCookies.map(c => c.split(';')[0]).join('; ');
+
+        let parsed = null;
+        if (data) {
+          try {
+            parsed = JSON.parse(data);
+          } catch {
+            parsed = { rawText: data };
+          }
+        }
+
+        if (res.statusCode >= 400) {
+          const errMsg = parsed?.error?.message?.value || parsed?.error?.message || `SAP request failed with status ${res.statusCode}`;
+          const error = new Error(errMsg);
+          error.status = res.statusCode;
+          error.sapError = parsed?.error || null;
+          reject(error);
+          return;
+        }
+
+        resolve({ data: parsed, cookies: cookieString || cookies, status: res.statusCode });
+      });
+    });
+
+    req.on('error', (err) => {
+      reject(new Error(`SAP connection error: ${err.message}`));
+    });
+
+    // 30 second timeout
+    req.setTimeout(30000, () => {
+      req.destroy();
+      reject(new Error('SAP request timed out after 30 seconds'));
+    });
+
+    if (bodyStr) {
+      req.write(bodyStr);
+    }
+    req.end();
+  });
 }
 
 /**
