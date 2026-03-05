@@ -75,53 +75,60 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
   const companyName = cd.companyName || bi.businessName || kycRecord.companyName || '';
   const cardCode = generateCardCode(kycRecord.id, companyName, bpType);
 
+  // SAP B1 field length limits — truncate to prevent "Value too long" errors
+  const t = (val, max) => val ? String(val).substring(0, max) : '';
+
   const bp = {
-    CardCode: cardCode,
-    CardName: companyName,
+    CardCode: t(cardCode, 15),
+    CardName: t(companyName, 100),
     CardType: bpType === 'customer' ? 'cCustomer' : 'cSupplier',
-    // Contact details
-    Phone1: cd.officePhone || bi.phone || '',
-    Phone2: bi.phone && cd.officePhone ? bi.phone : '',
-    EmailAddress: cd.email || kycRecord.email || '',
-    Website: cd.websiteSocialMedia || bi.website || '',
-    // Tax & Registration
-    FederalTaxID: bi.taxRegistrationNo || '',
-    VatRegistrationNumber: cd.vatRegistrationNo || '',
-    // Free text for trade license
-    FreeText: [
+    // Contact details (SAP limits: Phone=20, Email=100, Website=100)
+    Phone1: t(cd.officePhone || bi.phone, 20),
+    Phone2: t(bi.phone && cd.officePhone ? bi.phone : '', 20),
+    EmailAddress: t(cd.email || kycRecord.email, 100),
+    Website: t(cd.websiteSocialMedia || bi.website, 100),
+    // Tax & Registration (SAP limits: FederalTaxID=32, VatReg=32)
+    FederalTaxID: t(bi.taxRegistrationNo, 32),
+    VatRegistrationNumber: t(cd.vatRegistrationNo, 32),
+    // Free text for trade license (SAP limit: 254)
+    FreeText: t([
       cd.tradeLicenseNo ? `Trade License: ${cd.tradeLicenseNo}` : '',
       cd.tradeLicenseExpiry ? `License Expiry: ${cd.tradeLicenseExpiry}` : '',
       cd.mqaRegistrationNo ? `MQA Reg: ${cd.mqaRegistrationNo}` : '',
       bi.natureOfBusiness ? `Nature: ${bi.natureOfBusiness}` : '',
-    ].filter(Boolean).join(' | '),
+    ].filter(Boolean).join(' | '), 254),
     // Currency
     Currency: 'AED',
-    // Country
-    Country: getCountryCode(bi.country),
-    // Notes
-    Notes: [
+    // Country (SAP limit: 3 char code)
+    Country: t(getCountryCode(bi.country), 3),
+    // Notes (SAP limit: 254)
+    Notes: t([
       `KYC ID: ${kycRecord.id}`,
       bi.yearsInBusiness ? `Years in Business: ${bi.yearsInBusiness}` : '',
       bi.annualSales ? `Annual Sales: ${bi.annualSales}` : '',
       bi.numberOfEmployees ? `Employees: ${bi.numberOfEmployees}` : '',
       sm.linkedin ? `LinkedIn: ${sm.linkedin}` : '',
-    ].filter(Boolean).join('\n'),
+    ].filter(Boolean).join('\n'), 254),
   };
 
   // ===== ADDRESSES =====
   const addresses = [];
   let addrIdx = 0;
 
+  // SAP Address field limits: AddressName=50, Street=100, City=100, ZipCode=20, State=3, Block=100
+  const stateCode = t(bi.provinceState, 3); // SAP State is a 3-char code
+
   // Bill-to address (registered office / company address)
   const billToAddr = cd.registeredOfficeAddress || cd.companyAddress || bi.address || '';
   if (billToAddr) {
     addresses.push({
-      AddressName: 'BILL_TO',
-      Street: billToAddr,
-      City: bi.city || '',
-      ZipCode: bi.postalZipCode || '',
-      Country: getCountryCode(bi.country),
-      State: bi.provinceState || '',
+      AddressName: t('BILL_TO', 50),
+      Street: t(billToAddr, 100),
+      Block: t(billToAddr.length > 100 ? billToAddr.substring(100) : '', 100),
+      City: t(bi.city, 100),
+      ZipCode: t(bi.postalZipCode, 20),
+      Country: t(getCountryCode(bi.country), 3),
+      State: stateCode,
       AddressType: 'bo_BillTo',
       BPCode: cardCode,
       RowNum: addrIdx++,
@@ -132,12 +139,13 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
   const shipToAddr = cd.companyAddress || bi.address || '';
   if (shipToAddr) {
     addresses.push({
-      AddressName: 'SHIP_TO',
-      Street: shipToAddr,
-      City: bi.city || '',
-      ZipCode: bi.postalZipCode || '',
-      Country: getCountryCode(bi.country),
-      State: bi.provinceState || '',
+      AddressName: t('SHIP_TO', 50),
+      Street: t(shipToAddr, 100),
+      Block: t(shipToAddr.length > 100 ? shipToAddr.substring(100) : '', 100),
+      City: t(bi.city, 100),
+      ZipCode: t(bi.postalZipCode, 20),
+      Country: t(getCountryCode(bi.country), 3),
+      State: stateCode,
       AddressType: 'bo_ShipTo',
       BPCode: cardCode,
       RowNum: addrIdx++,
@@ -148,9 +156,10 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
   warehouses.forEach((wh, i) => {
     if (wh.address) {
       addresses.push({
-        AddressName: `WAREHOUSE_${i + 1}`,
-        Street: wh.address,
-        Country: getCountryCode(bi.country),
+        AddressName: t(`WAREHOUSE_${i + 1}`, 50),
+        Street: t(wh.address, 100),
+        Block: t(wh.address.length > 100 ? wh.address.substring(100) : '', 100),
+        Country: t(getCountryCode(bi.country), 3),
         AddressType: 'bo_ShipTo',
         BPCode: cardCode,
         RowNum: addrIdx++,
@@ -166,21 +175,21 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
   const contacts = [];
   let contactIdx = 0;
 
-  // Owners/Directors as contacts
+  // SAP Contact limits: Name=50, FirstName=80, LastName=80, Title=10, Phone=20, E_Mail=100, Remarks=254
   owners.forEach((o) => {
     if (o.name) {
       const nameParts = o.name.trim().split(/\s+/);
       contacts.push({
-        Name: o.name.substring(0, 50),
-        FirstName: nameParts[0] || '',
-        LastName: nameParts.slice(1).join(' ') || nameParts[0] || '',
-        Title: o.designation || '',
-        Phone1: o.contactNo || '',
-        E_Mail: o.email || '',
-        Remarks1: [
+        Name: t(o.name, 50),
+        FirstName: t(nameParts[0], 80),
+        LastName: t(nameParts.slice(1).join(' ') || nameParts[0], 80),
+        Title: t(o.designation, 10),
+        Phone1: t(o.contactNo, 20),
+        E_Mail: t(o.email, 100),
+        Remarks1: t([
           o.nationality ? `Nationality: ${o.nationality}` : '',
           o.shareholdingPercent ? `Shareholding: ${o.shareholdingPercent}%` : '',
-        ].filter(Boolean).join(', '),
+        ].filter(Boolean).join(', '), 254),
         InternalCode: contactIdx++,
       });
     }
@@ -190,12 +199,12 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
   if (mi.managerName) {
     const mParts = mi.managerName.trim().split(/\s+/);
     contacts.push({
-      Name: mi.managerName.substring(0, 50),
-      FirstName: mParts[0] || '',
-      LastName: mParts.slice(1).join(' ') || mParts[0] || '',
-      Title: 'Manager',
-      Phone1: mi.managerPhone || mi.managerMobile || '',
-      E_Mail: mi.managerEmail || '',
+      Name: t(mi.managerName, 50),
+      FirstName: t(mParts[0], 80),
+      LastName: t(mParts.slice(1).join(' ') || mParts[0], 80),
+      Title: t('Manager', 10),
+      Phone1: t(mi.managerPhone || mi.managerMobile, 20),
+      E_Mail: t(mi.managerEmail, 100),
       InternalCode: contactIdx++,
     });
   }
@@ -204,12 +213,12 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
   if (mi.apContactName) {
     const aParts = mi.apContactName.trim().split(/\s+/);
     contacts.push({
-      Name: mi.apContactName.substring(0, 50),
-      FirstName: aParts[0] || '',
-      LastName: aParts.slice(1).join(' ') || aParts[0] || '',
-      Title: 'AP Contact',
-      Phone1: mi.apContactPhone || mi.apContactMobile || '',
-      E_Mail: mi.apContactEmail || '',
+      Name: t(mi.apContactName, 50),
+      FirstName: t(aParts[0], 80),
+      LastName: t(aParts.slice(1).join(' ') || aParts[0], 80),
+      Title: t('AP Contact', 10),
+      Phone1: t(mi.apContactPhone || mi.apContactMobile, 20),
+      E_Mail: t(mi.apContactEmail, 100),
       InternalCode: contactIdx++,
     });
   }
@@ -221,17 +230,17 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
   // ===== BANK ACCOUNTS =====
   const bankAccounts = [];
 
+  // SAP Bank limits: BankCode=30, AccountNo=50, IBAN=50, BICSwiftCode=20, Branch=50, AccountName=100
   banks.forEach((b, i) => {
     if (b.bankName || b.accountNo || b.iban) {
       bankAccounts.push({
-        BankCode: (b.bankName || '').substring(0, 30).replace(/[^A-Za-z0-9 ]/g, ''),
-        AccountNo: b.accountNo || '',
-        IBAN: b.iban || '',
-        BICSwiftCode: b.swift || '',
-        Branch: b.branch || '',
-        AccountName: companyName,
-        CorrespondentAccount: '',
-        Country: getCountryCode(bi.country),
+        BankCode: t((b.bankName || '').replace(/[^A-Za-z0-9 ]/g, ''), 30),
+        AccountNo: t(b.accountNo, 50),
+        IBAN: t(b.iban, 50),
+        BICSwiftCode: t(b.swift, 20),
+        Branch: t(b.branch, 50),
+        AccountName: t(companyName, 100),
+        Country: t(getCountryCode(bi.country), 3),
       });
     }
   });
