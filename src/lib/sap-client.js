@@ -56,19 +56,24 @@ function sapRequest(method, path, body = null, cookies = '', agent = null) {
 
     const bodyStr = body ? JSON.stringify(body) : null;
 
+    // Match n8n's minimal header approach — only Content-Type + Cookie
+    // Extra headers (Prefer, Accept, B1S-*) can confuse some SAP SL proxies
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+
+    // Only add B1S-ReplaceCollectionsOnPatch for PATCH requests (where it's needed)
+    if (method === 'PATCH') {
+      headers['B1S-ReplaceCollectionsOnPatch'] = 'true';
+    }
+
     const options = {
       hostname: parsed.hostname,
       port: parsed.port || (isHttps ? 443 : 80),
       path: parsed.pathname + parsed.search,
       method,
       agent: isHttps ? (agent || createSapAgent()) : new http.Agent({ keepAlive: true }),
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        // SAP B1 Service Layer specific headers
-        'Prefer': 'odata.maxpagesize=0',
-        'B1S-ReplaceCollectionsOnPatch': 'true',
-      },
+      headers,
       rejectUnauthorized: false,
     };
 
