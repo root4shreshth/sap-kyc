@@ -97,8 +97,7 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
       cd.mqaRegistrationNo ? `MQA Reg: ${cd.mqaRegistrationNo}` : '',
       bi.natureOfBusiness ? `Nature: ${bi.natureOfBusiness}` : '',
     ].filter(Boolean).join(' | '), 254),
-    // Currency
-    Currency: 'AED',
+    // Currency — omitted to use SAP default (avoids error if AED not configured)
     // Country (SAP limit: 3 char code)
     Country: t(getCountryCode(bi.country), 3),
     // Notes (SAP limit: 254)

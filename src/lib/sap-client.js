@@ -5,6 +5,10 @@
  * Uses native https module (not fetch) to support self-signed SSL certs on on-prem SAP.
  */
 
+// NUCLEAR OPTION: Globally disable SSL certificate verification
+// This is what n8n does — required for on-prem SAP with self-signed certs
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 import https from 'https';
 import http from 'http';
 import { URL } from 'url';
@@ -24,9 +28,8 @@ const sapAgent = new https.Agent({
   keepAlive: true,
   keepAliveMsecs: 30000,
   maxSockets: 5,
-  // Allow older TLS for on-prem SAP servers
+  // Allow ALL TLS versions for on-prem SAP servers
   minVersion: 'TLSv1',
-  // Accept legacy renegotiation
   secureOptions: require('crypto').constants?.SSL_OP_LEGACY_SERVER_CONNECT || 0,
 });
 
@@ -83,10 +86,12 @@ function sapRequest(method, path, body = null, cookies = '') {
         }
 
         if (res.statusCode >= 400) {
-          const errMsg = jsonData?.error?.message?.value || jsonData?.error?.message || `SAP request failed with status ${res.statusCode}`;
+          // Log full response for debugging SAP errors
+          console.error(`[SAP] HTTP ${res.statusCode} ${method} ${path}:`, data?.substring(0, 500));
+          const errMsg = jsonData?.error?.message?.value || jsonData?.error?.message || jsonData?.rawText?.substring(0, 200) || `SAP request failed with status ${res.statusCode}`;
           const error = new Error(errMsg);
           error.status = res.statusCode;
-          error.sapError = jsonData?.error || null;
+          error.sapError = jsonData?.error || jsonData || null;
           reject(error);
           return;
         }
