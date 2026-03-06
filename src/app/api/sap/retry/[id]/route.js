@@ -5,6 +5,7 @@ import {
   withSapSession, createBusinessPartner, isSapConfigured,
   getDocumentSeries, findDefaultSeries,
   getLastCardCodeByPrefix, generateNextCardCode, getCardCodePrefix,
+  getPaymentTerms, findAdvancePaymentTerms,
 } from '@/lib/sap-client';
 import { mapKycToBusinessPartner, validateForSapPush } from '@/lib/sap-mapping';
 
@@ -96,7 +97,17 @@ export async function POST(request, { params }) {
           }
         }
 
-        const bpPayload = mapKycToBusinessPartner(formData, kyc, bpType, seriesNumber, sequentialCardCode);
+        // Query payment terms — default to 100% Advance
+        let payTermsCode = null;
+        try {
+          const termsList = await getPaymentTerms(cookies, agent);
+          payTermsCode = findAdvancePaymentTerms(termsList);
+          console.log(`[SAP Retry] Payment terms: ${payTermsCode !== null ? `100% Advance (${payTermsCode})` : 'not found'}`);
+        } catch (ptErr) {
+          console.warn('[SAP Retry] Payment terms query failed:', ptErr.message);
+        }
+
+        const bpPayload = mapKycToBusinessPartner(formData, kyc, bpType, seriesNumber, sequentialCardCode, payTermsCode);
         return await createBusinessPartner(bpPayload, cookies);
       });
 

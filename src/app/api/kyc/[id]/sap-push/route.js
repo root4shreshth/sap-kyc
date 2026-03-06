@@ -6,6 +6,7 @@ import {
   uploadAttachments, isSapConfigured, createPostAgent,
   getDocumentSeries, findDefaultSeries,
   getLastCardCodeByPrefix, generateNextCardCode, getCardCodePrefix,
+  getPaymentTerms, findAdvancePaymentTerms,
   writeToAttachmentShare, createAttachmentFromPath, getSapAttachmentPath,
 } from '@/lib/sap-client';
 import { mapKycToBusinessPartner, mapKycToMinimalBusinessPartner, mapKycToAddresses, mapKycToContacts, validateForSapPush } from '@/lib/sap-mapping';
@@ -133,10 +134,24 @@ export async function POST(request, { params }) {
           }
         }
 
+        // ====== QUERY PAYMENT TERMS (default: 100% Advance) ======
+        let payTermsCode = null;
+        try {
+          const termsList = await getPaymentTerms(cookies, agent);
+          payTermsCode = findAdvancePaymentTerms(termsList);
+          if (payTermsCode !== null) {
+            console.log(`[SAP Push] Payment terms: 100% Advance (GroupNumber: ${payTermsCode})`);
+          } else {
+            console.warn('[SAP Push] Could not find "100% Advance" payment term — skipping');
+          }
+        } catch (ptErr) {
+          console.warn('[SAP Push] Payment terms query failed:', ptErr.message);
+        }
+
         // ====== BUILD PAYLOAD ======
         const bpPayload = minimal
-          ? mapKycToMinimalBusinessPartner(formData, kyc, bpType, seriesNumber, sequentialCardCode)
-          : mapKycToBusinessPartner(formData, kyc, bpType, seriesNumber, sequentialCardCode);
+          ? mapKycToMinimalBusinessPartner(formData, kyc, bpType, seriesNumber, sequentialCardCode, payTermsCode)
+          : mapKycToBusinessPartner(formData, kyc, bpType, seriesNumber, sequentialCardCode, payTermsCode);
 
         console.log('[SAP Push] Stage 1 Payload:', JSON.stringify(bpPayload, null, 2));
 

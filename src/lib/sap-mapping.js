@@ -14,7 +14,7 @@
  * let SAP auto-generate the CardCode from the configured numbering series.
  * Series are queried at runtime via SeriesService_GetDocumentSeries.
  *
- * Stage 1 (POST): Series, CardName, CardType, Phone, Email, PaymentTermsGrpCode, etc.
+ * Stage 1 (POST): Series, CardName, CardType, Phone, Email, PayTermsGrpCode, etc.
  * Stage 2 (PATCH): BPAddresses (using SAP-returned CardCode)
  * Stage 3 (PATCH): ContactEmployees
  */
@@ -158,8 +158,9 @@ function cleanSapPayload(obj) {
  * @param {string} bpType - 'customer', 'vendor', or 'lead'
  * @param {number|null} seriesNumber - SAP numbering series (if provided, SAP auto-generates CardCode)
  * @param {string|null} cardCode - Pre-generated CardCode (e.g., "CUS0002") to use when series unavailable
+ * @param {number|null} payTermsCode - Payment Terms GroupNumber (e.g., GroupNumber for "100% Advance")
  */
-export function mapKycToBusinessPartner(formData, kycRecord, bpType, seriesNumber = null, cardCode = null) {
+export function mapKycToBusinessPartner(formData, kycRecord, bpType, seriesNumber = null, cardCode = null, payTermsCode = null) {
   const bi = formData.businessInfo || {};
   const cd = formData.companyDetails || {};
   const banks = formData.bankingChecks || [];
@@ -208,9 +209,11 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType, seriesNumbe
     bp.CardCode = t(generateFallbackCardCode(kycRecord.id, companyName, bpType), L.CardCode);
   }
 
-  // NOTE: PaymentTermsGrpCode is NOT sent — SAP B1 rejects it as invalid
-  // on this installation (similar to VatRegistrationNumber). If needed in
-  // future, the SAP team must confirm the correct property name.
+  // Payment Terms — correct SAP B1 SL property is "PayTermsGrpCode" (NOT "PaymentTermsGrpCode")
+  // Default to 100% Advance if the GroupNumber was resolved from SAP
+  if (payTermsCode !== null && payTermsCode !== undefined) {
+    bp.PayTermsGrpCode = payTermsCode;
+  }
 
   return cleanSapPayload(bp);
 }
@@ -353,8 +356,9 @@ export function mapKycToContacts(formData, kycRecord) {
  * @param {string} bpType - 'customer', 'vendor', or 'lead'
  * @param {number|null} seriesNumber
  * @param {string|null} cardCode - Pre-generated CardCode (e.g., "CUS0002") when series unavailable
+ * @param {number|null} payTermsCode - Payment Terms GroupNumber
  */
-export function mapKycToMinimalBusinessPartner(formData, kycRecord, bpType, seriesNumber = null, cardCode = null) {
+export function mapKycToMinimalBusinessPartner(formData, kycRecord, bpType, seriesNumber = null, cardCode = null, payTermsCode = null) {
   const bi = formData.businessInfo || {};
   const cd = formData.companyDetails || {};
   const companyName = cd.companyName || bi.businessName || kycRecord.companyName || '';
@@ -378,6 +382,11 @@ export function mapKycToMinimalBusinessPartner(formData, kycRecord, bpType, seri
 
   const email = cd.email || kycRecord.email;
   if (email) payload.EmailAddress = t(email, SAP_LIMITS.Email);
+
+  // Payment Terms — correct property is "PayTermsGrpCode"
+  if (payTermsCode !== null && payTermsCode !== undefined) {
+    payload.PayTermsGrpCode = payTermsCode;
+  }
 
   return payload;
 }

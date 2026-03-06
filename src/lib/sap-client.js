@@ -577,14 +577,28 @@ export async function getPaymentTerms(cookies, agent = null) {
  * @returns {number|null}
  */
 export function findAdvancePaymentTerms(termsList) {
-  // Try: "100%" + "advance"
-  const exact = termsList.find(t => {
+  // Filter all terms containing "100%" + "advance"
+  const matches = termsList.filter(t => {
     const name = (t.PaymentTermsGroupName || '').toLowerCase();
     return name.includes('100') && name.includes('advance');
   });
-  if (exact) return exact.GroupNumber;
 
-  // Try: just "100%"
+  if (matches.length > 0) {
+    // Prefer "100% Advance Before Loading" as it's the standard trading term
+    const beforeLoading = matches.find(t =>
+      (t.PaymentTermsGroupName || '').toLowerCase().includes('before loading')
+    );
+    if (beforeLoading) {
+      console.log(`[SAP] Found payment term: "${beforeLoading.PaymentTermsGroupName}" (GroupNumber: ${beforeLoading.GroupNumber})`);
+      return beforeLoading.GroupNumber;
+    }
+    // Otherwise take the shortest match (most generic "100% Advance")
+    matches.sort((a, b) => (a.PaymentTermsGroupName || '').length - (b.PaymentTermsGroupName || '').length);
+    console.log(`[SAP] Found payment term: "${matches[0].PaymentTermsGroupName}" (GroupNumber: ${matches[0].GroupNumber})`);
+    return matches[0].GroupNumber;
+  }
+
+  // Fallback: try just "100%"
   const pct100 = termsList.find(t => {
     const name = (t.PaymentTermsGroupName || '').toLowerCase();
     return name.includes('100%');
