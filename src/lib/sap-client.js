@@ -503,6 +503,88 @@ export async function getBusinessPartner(cardCode, cookies, agent = null) {
 }
 
 /**
+ * Query SAP's document numbering series for Business Partners.
+ * Document type "2" = Business Partners.
+ * Returns array of series with Series number, SeriesName, DocumentSubType, NextNumber, etc.
+ * DocumentSubType: "C" = Customer, "S" = Supplier, "L" = Lead
+ */
+export async function getDocumentSeries(cookies, agent = null) {
+  const { data } = await sapRequestWithRetry(
+    'POST',
+    '/b1s/v1/SeriesService_GetDocumentSeries',
+    { DocumentTypeParams: { Document: '2' } },
+    cookies,
+    2,
+    agent
+  );
+  return data?.value || [];
+}
+
+/**
+ * Find the default series number for a given BP subtype.
+ * @param {Array} seriesList - From getDocumentSeries()
+ * @param {string} subType - "C" (customer), "S" (supplier), "L" (lead)
+ * @returns {number|null} The Series number or null
+ */
+export function findDefaultSeries(seriesList, subType) {
+  const matches = seriesList.filter(s => s.DocumentSubType === subType);
+  // Prefer the one marked as default
+  const defaultSeries = matches.find(s => s.IsDefault === 'tYES');
+  if (defaultSeries) return defaultSeries.Series;
+  // Fall back to first matching series (skip "Manual" entries with no Series)
+  const nonManual = matches.filter(s => s.Series && s.SeriesName !== 'Manual');
+  if (nonManual.length > 0) return nonManual[0].Series;
+  if (matches.length > 0) return matches[0].Series;
+  return null;
+}
+
+/**
+ * Query SAP payment terms types.
+ * Returns array of { GroupNumber, PaymentTermsGroupName, ... }
+ */
+export async function getPaymentTerms(cookies, agent = null) {
+  const { data } = await sapRequestWithRetry(
+    'GET',
+    '/b1s/v1/PaymentTermsTypes',
+    null,
+    cookies,
+    2,
+    agent
+  );
+  return data?.value || [];
+}
+
+/**
+ * Find the GroupNumber for "100% Advance" payment terms.
+ * @param {Array} termsList - From getPaymentTerms()
+ * @returns {number|null}
+ */
+export function findAdvancePaymentTerms(termsList) {
+  // Try: "100%" + "advance"
+  const exact = termsList.find(t => {
+    const name = (t.PaymentTermsGroupName || '').toLowerCase();
+    return name.includes('100') && name.includes('advance');
+  });
+  if (exact) return exact.GroupNumber;
+
+  // Try: just "100%"
+  const pct100 = termsList.find(t => {
+    const name = (t.PaymentTermsGroupName || '').toLowerCase();
+    return name.includes('100%');
+  });
+  if (pct100) return pct100.GroupNumber;
+
+  return null;
+}
+
+/**
+ * Get the configured SAP attachment path.
+ */
+export function getSapAttachmentPath() {
+  return process.env.SAP_ATTACHMENT_PATH || '';
+}
+
+/**
  * Check if SAP integration is configured
  */
 export function isSapConfigured() {

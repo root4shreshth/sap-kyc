@@ -5,6 +5,8 @@ import {
   createBusinessPartner, getBusinessPartner,
   createSapAgent, createPostAgent, sapRequestRaw,
   createPlaceholderAttachment,
+  getDocumentSeries, findDefaultSeries,
+  getPaymentTerms, findAdvancePaymentTerms,
 } from '@/lib/sap-client';
 
 export async function POST(request) {
@@ -45,13 +47,11 @@ export async function POST(request) {
     }
 
     // ====== DEEP TEST: Multi-strategy BP creation diagnostic ======
-    // Tests Login → GET BP → 6 POST strategies → report results
-    const testCardCode = `ZTEST${Date.now().toString().slice(-6)}`;
-    const testPayload = { CardCode: testCardCode, CardName: 'API Deep Test - Delete Me', CardType: 'cCustomer' };
-    const testPayloadNoType = { CardCode: testCardCode, CardName: 'API Deep Test - Delete Me' };
-
+    // Tests Login → Series query → Payment terms → GET BP → POST strategies → report
     const results = {
       login: null,
+      series: null,
+      paymentTerms: null,
       getBP: null,
     };
 
@@ -72,7 +72,56 @@ export async function POST(request) {
 
     const { cookies, agent: loginAgent } = session;
 
-    // Step 2: GET existing BP to verify read access
+    // Step 2: Query document series
+    let testSeriesNumber = null;
+    const seriesStart = Date.now();
+    try {
+      const seriesList = await getDocumentSeries(cookies, loginAgent);
+      testSeriesNumber = findDefaultSeries(seriesList, 'C'); // Customer series for test
+      results.series = {
+        status: 'success',
+        customerSeries: testSeriesNumber,
+        allSeries: seriesList.map(s => ({
+          series: s.Series, name: s.SeriesName, subType: s.DocumentSubType,
+          nextNumber: s.NextNumber, prefix: s.Prefix || '', suffix: s.Suffix || '',
+        })),
+        durationMs: Date.now() - seriesStart,
+      };
+      console.log('[SAP Deep Test] Series queried. Customer series:', testSeriesNumber);
+    } catch (seriesErr) {
+      results.series = { status: 'failed', error: seriesErr.message, durationMs: Date.now() - seriesStart };
+      console.warn('[SAP Deep Test] Series query failed:', seriesErr.message);
+    }
+
+    // Step 2b: Query payment terms
+    const ptStart = Date.now();
+    try {
+      const termsList = await getPaymentTerms(cookies, loginAgent);
+      const advanceCode = findAdvancePaymentTerms(termsList);
+      results.paymentTerms = {
+        status: 'success',
+        advanceCode,
+        terms: termsList.map(t => ({ code: t.GroupNumber, name: t.PaymentTermsGroupName })),
+        durationMs: Date.now() - ptStart,
+      };
+    } catch (ptErr) {
+      results.paymentTerms = { status: 'failed', error: ptErr.message, durationMs: Date.now() - ptStart };
+    }
+
+    // Build test payloads — use Series if available, fall back to manual CardCode
+    const testCardCode = testSeriesNumber ? null : `ZTEST${Date.now().toString().slice(-6)}`;
+    const testPayload = { CardName: 'API Deep Test - Delete Me', CardType: 'cCustomer' };
+    const testPayloadNoType = { CardName: 'API Deep Test - Delete Me' };
+
+    if (testSeriesNumber) {
+      testPayload.Series = testSeriesNumber;
+      testPayloadNoType.Series = testSeriesNumber;
+    } else {
+      testPayload.CardCode = testCardCode;
+      testPayloadNoType.CardCode = testCardCode;
+    }
+
+    // Step 2c: GET existing BP to verify read access
     const getBPStart = Date.now();
     try {
       const bpData = await getBusinessPartner('V00001', cookies, loginAgent);
@@ -220,7 +269,7 @@ export async function POST(request) {
         const durationMs = Date.now() - stratStart;
         strategyResults[strategy.name] = {
           status: 'success',
-          cardCode: data?.CardCode || testCardCode,
+          cardCode: data?.CardCode || testCardCode || '(auto-generated)',
           durationMs,
         };
         workingStrategy = strategy.name;
@@ -334,8 +383,9 @@ export async function POST(request) {
     return NextResponse.json({
       success: !!workingStrategy,
       deepTest: true,
-      testCardCode,
+      testCardCode: testCardCode || '(series-based)',
       createdCardCode,
+      attachmentPath: process.env.SAP_ATTACHMENT_PATH || '(not configured)',
       results,
       strategies: strategyResults,
       workingStrategy,

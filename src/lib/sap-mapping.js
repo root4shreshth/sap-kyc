@@ -9,8 +9,13 @@
  * Solution: Create BP with core fields first (POST), then PATCH in addresses
  * and contacts separately. This is how n8n and other integrations work reliably.
  *
- * Stage 1 (POST): CardCode, CardName, CardType, Phone, Email, etc.
- * Stage 2 (PATCH): BPAddresses
+ * NUMBERING:
+ * CardCode is NOT manually generated. Instead, we send a `Series` field and
+ * let SAP auto-generate the CardCode from the configured numbering series.
+ * Series are queried at runtime via SeriesService_GetDocumentSeries.
+ *
+ * Stage 1 (POST): Series, CardName, CardType, Phone, Email, PaymentTermsGrpCode, etc.
+ * Stage 2 (PATCH): BPAddresses (using SAP-returned CardCode)
  * Stage 3 (PATCH): ContactEmployees
  */
 
@@ -102,17 +107,27 @@ function t(val, max) {
 }
 
 /**
- * Generate a unique CardCode for SAP.
- * Format: {C|V}{3-letter-name}{8-hex-from-uuid} = max 12 chars (within 15 limit)
+ * Fallback CardCode generator (used ONLY if SAP series query fails).
+ * Format: {C|V|L}{3-letter-name}{8-hex-from-uuid} = max 12 chars (within 15 limit)
  */
-function generateCardCode(kycId, companyName, bpType) {
-  const prefix = bpType === 'customer' ? 'C' : 'V';
+function generateFallbackCardCode(kycId, companyName, bpType) {
+  const prefix = bpType === 'customer' ? 'C' : bpType === 'vendor' ? 'V' : 'L';
   const namepart = (companyName || 'UNK')
     .replace(/[^A-Za-z]/g, '')
     .substring(0, 3)
     .toUpperCase() || 'UNK';
   const idPart = kycId.replace(/-/g, '').substring(0, 8).toUpperCase();
   return `${prefix}${namepart}${idPart}`;
+}
+
+/**
+ * Map bpType to SAP CardType value.
+ */
+function getCardType(bpType) {
+  if (bpType === 'customer') return 'cCustomer';
+  if (bpType === 'vendor') return 'cSupplier';
+  if (bpType === 'lead') return 'cLead';
+  return 'cCustomer'; // fallback
 }
 
 /** Recursively remove empty/null/undefined values from SAP payload. */
@@ -137,15 +152,19 @@ function cleanSapPayload(obj) {
 /**
  * STAGE 1: Core BP fields only (for POST /BusinessPartners).
  * This is the safest payload — no sub-collections, no arrays.
- * SAP never returns 502 on this.
+ *
+ * @param {Object} formData - Normalized KYC form data
+ * @param {Object} kycRecord - KYC database record
+ * @param {string} bpType - 'customer', 'vendor', or 'lead'
+ * @param {number|null} seriesNumber - SAP numbering series (if null, falls back to manual CardCode)
+ * @param {number|null} paymentTermsCode - SAP PaymentTermsGrpCode (e.g., code for "100% Advance")
  */
-export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
+export function mapKycToBusinessPartner(formData, kycRecord, bpType, seriesNumber = null, paymentTermsCode = null) {
   const bi = formData.businessInfo || {};
   const cd = formData.companyDetails || {};
   const banks = formData.bankingChecks || [];
 
   const companyName = cd.companyName || bi.businessName || kycRecord.companyName || '';
-  const cardCode = generateCardCode(kycRecord.id, companyName, bpType);
   const L = SAP_LIMITS;
 
   // Build FreeText with tax IDs, trade license + bank summary
@@ -169,9 +188,8 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
   });
 
   const bp = {
-    CardCode: t(cardCode, L.CardCode),
     CardName: t(companyName, L.CardName),
-    CardType: bpType === 'customer' ? 'cCustomer' : 'cSupplier',
+    CardType: getCardType(bpType),
     Phone1: t(cd.officePhone || bi.phone, L.Phone),
     Phone2: t(bi.phone && cd.officePhone ? bi.phone : '', L.Phone),
     EmailAddress: t(cd.email || kycRecord.email, L.Email),
@@ -181,20 +199,34 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType) {
     Notes: t(`KYC:${kycRecord.id.substring(0, 36)}`, L.Notes),
   };
 
+  // Use SAP auto-numbering via Series, or fall back to manual CardCode
+  if (seriesNumber) {
+    bp.Series = seriesNumber;
+  } else {
+    bp.CardCode = t(generateFallbackCardCode(kycRecord.id, companyName, bpType), L.CardCode);
+  }
+
+  // Set default payment terms if available
+  if (paymentTermsCode !== null && paymentTermsCode !== undefined) {
+    bp.PaymentTermsGrpCode = paymentTermsCode;
+  }
+
   return cleanSapPayload(bp);
 }
 
 /**
  * STAGE 2: Addresses payload (for PATCH /BusinessPartners('{CardCode}')).
  * Returns { BPAddresses: [...] } or null if no addresses.
+ *
+ * @param {Object} formData - Normalized KYC form data
+ * @param {Object} kycRecord - KYC database record
+ * @param {string} cardCode - The SAP-returned CardCode from Stage 1
  */
-export function mapKycToAddresses(formData, kycRecord, bpType) {
+export function mapKycToAddresses(formData, kycRecord, cardCode) {
   const bi = formData.businessInfo || {};
   const cd = formData.companyDetails || {};
   const warehouses = formData.warehouseAddresses || [];
 
-  const companyName = cd.companyName || bi.businessName || kycRecord.companyName || '';
-  const cardCode = generateCardCode(kycRecord.id, companyName, bpType);
   const L = SAP_LIMITS;
   const countryCode = t(getCountryCode(bi.country), L.Country);
   const stateCode = getStateCode(bi.provinceState);
@@ -255,7 +287,7 @@ export function mapKycToAddresses(formData, kycRecord, bpType) {
  * STAGE 3: Contacts payload (for PATCH /BusinessPartners('{CardCode}')).
  * Returns { ContactEmployees: [...] } or null if no contacts.
  */
-export function mapKycToContacts(formData, kycRecord, bpType) {
+export function mapKycToContacts(formData, kycRecord) {
   const mi = formData.managerInfo || {};
   const owners = formData.ownershipManagement || [];
   const L = SAP_LIMITS;
@@ -313,35 +345,40 @@ export function mapKycToContacts(formData, kycRecord, bpType) {
 }
 
 /**
- * Get the CardCode that would be generated for this KYC.
- */
-export function getCardCode(formData, kycRecord, bpType) {
-  const bi = formData.businessInfo || {};
-  const cd = formData.companyDetails || {};
-  const companyName = cd.companyName || bi.businessName || kycRecord.companyName || '';
-  return generateCardCode(kycRecord.id, companyName, bpType);
-}
-
-/**
  * Minimal BP payload for testing SAP connection.
+ *
+ * @param {Object} formData
+ * @param {Object} kycRecord
+ * @param {string} bpType - 'customer', 'vendor', or 'lead'
+ * @param {number|null} seriesNumber
+ * @param {number|null} paymentTermsCode
  */
-export function mapKycToMinimalBusinessPartner(formData, kycRecord, bpType) {
+export function mapKycToMinimalBusinessPartner(formData, kycRecord, bpType, seriesNumber = null, paymentTermsCode = null) {
   const bi = formData.businessInfo || {};
   const cd = formData.companyDetails || {};
   const companyName = cd.companyName || bi.businessName || kycRecord.companyName || '';
-  const cardCode = generateCardCode(kycRecord.id, companyName, bpType);
 
   const payload = {
-    CardCode: t(cardCode, SAP_LIMITS.CardCode),
     CardName: t(companyName, SAP_LIMITS.CardName),
-    CardType: bpType === 'customer' ? 'cCustomer' : 'cSupplier',
+    CardType: getCardType(bpType),
   };
+
+  // Use SAP auto-numbering via Series, or fall back to manual CardCode
+  if (seriesNumber) {
+    payload.Series = seriesNumber;
+  } else {
+    payload.CardCode = t(generateFallbackCardCode(kycRecord.id, companyName, bpType), SAP_LIMITS.CardCode);
+  }
 
   const phone = cd.officePhone || bi.phone;
   if (phone) payload.Phone1 = t(phone, SAP_LIMITS.Phone);
 
   const email = cd.email || kycRecord.email;
   if (email) payload.EmailAddress = t(email, SAP_LIMITS.Email);
+
+  if (paymentTermsCode !== null && paymentTermsCode !== undefined) {
+    payload.PaymentTermsGrpCode = paymentTermsCode;
+  }
 
   return payload;
 }

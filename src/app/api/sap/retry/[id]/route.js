@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getKycById, getKycFormData, updateKycSapStatus, createAuditEntry, createSapSyncLog, updateSapSyncLog } from '@/lib/db';
-import { withSapSession, createBusinessPartner, isSapConfigured } from '@/lib/sap-client';
+import {
+  withSapSession, createBusinessPartner, isSapConfigured, createPostAgent,
+  createPlaceholderAttachment, getDocumentSeries, findDefaultSeries,
+  getPaymentTerms, findAdvancePaymentTerms,
+} from '@/lib/sap-client';
 import { mapKycToBusinessPartner, validateForSapPush } from '@/lib/sap-mapping';
+
+const BP_TYPE_LABEL = { customer: 'Customer', vendor: 'Vendor', lead: 'Lead' };
 
 export async function POST(request, { params }) {
   const { user, error } = requireAuth(request, ['Admin']);
@@ -12,8 +18,8 @@ export async function POST(request, { params }) {
     const { id } = await params;
     const { bpType } = await request.json();
 
-    if (!bpType || !['customer', 'vendor'].includes(bpType)) {
-      return NextResponse.json({ error: 'bpType must be "customer" or "vendor"' }, { status: 400 });
+    if (!bpType || !['customer', 'vendor', 'lead'].includes(bpType)) {
+      return NextResponse.json({ error: 'bpType must be "customer", "vendor", or "lead"' }, { status: 400 });
     }
 
     if (!isSapConfigured()) {
@@ -35,7 +41,6 @@ export async function POST(request, { params }) {
 
     let formData = await getKycFormData(id);
     if (!formData || Object.keys(formData).length === 0) {
-      // Fall back to KYC record basics if portal form was never submitted
       formData = {
         businessInfo: {
           businessName: kyc.companyName || kyc.clientName || '',
@@ -53,30 +58,70 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: `Missing fields: ${validation.errors.join(', ')}` }, { status: 400 });
     }
 
-    const bpPayload = mapKycToBusinessPartner(formData, kyc, bpType);
-
     // Create sync log entry
     const syncLog = await createSapSyncLog({
       kycId: id,
-      cardCode: bpPayload.CardCode,
+      cardCode: 'pending',
       bpType,
       status: 'processing',
-      requestPayload: bpPayload,
+      requestPayload: { bpType, retry: true },
       triggeredBy: user.email,
     });
 
     const startTime = Date.now();
 
     try {
-      const sapResult = await withSapSession(async (cookies) => {
-        return await createBusinessPartner(bpPayload, cookies);
+      const sapResult = await withSapSession(async (cookies, agent) => {
+        // Query series for auto-numbering
+        let seriesNumber = null;
+        try {
+          const seriesList = await getDocumentSeries(cookies, agent);
+          const subType = bpType === 'customer' ? 'C' : bpType === 'vendor' ? 'S' : 'L';
+          seriesNumber = findDefaultSeries(seriesList, subType);
+          console.log(`[SAP Retry] Series for ${bpType}: ${seriesNumber || 'none'}`);
+        } catch (seriesErr) {
+          console.warn('[SAP Retry] Series query failed:', seriesErr.message);
+        }
+
+        // Query payment terms
+        let paymentTermsCode = null;
+        try {
+          const termsList = await getPaymentTerms(cookies, agent);
+          paymentTermsCode = findAdvancePaymentTerms(termsList);
+        } catch (ptErr) {
+          console.warn('[SAP Retry] Payment terms query failed:', ptErr.message);
+        }
+
+        // Build payload with series + payment terms
+        const bpPayload = mapKycToBusinessPartner(formData, kyc, bpType, seriesNumber, paymentTermsCode);
+
+        // Create placeholder attachment (SAP requires one)
+        let attachmentEntry = null;
+        const placeholderAgent = createPostAgent();
+        try {
+          attachmentEntry = await createPlaceholderAttachment(cookies, placeholderAgent);
+          console.log('[SAP Retry] Placeholder attachment:', attachmentEntry);
+        } catch (phErr) {
+          console.warn('[SAP Retry] Placeholder attachment failed:', phErr.message);
+        } finally {
+          try { placeholderAgent.destroy(); } catch { /* ignore */ }
+        }
+
+        const createPayload = { ...bpPayload };
+        if (attachmentEntry) createPayload.AttachmentEntry = attachmentEntry;
+
+        return await createBusinessPartner(createPayload, cookies);
       });
 
       const duration = Date.now() - startTime;
-      const cardCode = sapResult?.CardCode || bpPayload.CardCode;
+      const cardCode = sapResult?.CardCode;
+
+      if (!cardCode) {
+        throw new Error('SAP did not return a CardCode');
+      }
+
       const now = new Date().toISOString();
 
-      // Update KYC record
       await updateKycSapStatus(id, {
         sapCardCode: cardCode,
         sapBpType: bpType,
@@ -84,7 +129,6 @@ export async function POST(request, { params }) {
         sapSyncError: '',
       });
 
-      // Update sync log
       if (syncLog) {
         await updateSapSyncLog(syncLog.id, {
           status: 'success',
@@ -98,7 +142,7 @@ export async function POST(request, { params }) {
         action: 'SAP_BP_CREATED',
         actor: user.email,
         kycId: id,
-        details: `Business Partner ${cardCode} created as ${bpType} (retry)`,
+        details: `Business Partner ${cardCode} created as ${BP_TYPE_LABEL[bpType] || bpType} (retry)`,
       });
 
       return NextResponse.json({
@@ -106,7 +150,7 @@ export async function POST(request, { params }) {
         cardCode,
         bpType,
         durationMs: duration,
-        message: `Business Partner ${cardCode} created in SAP`,
+        message: `Business Partner ${cardCode} created in SAP as ${BP_TYPE_LABEL[bpType] || bpType}`,
       });
     } catch (sapErr) {
       const duration = Date.now() - startTime;

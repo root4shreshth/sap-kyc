@@ -291,6 +291,7 @@ function KycReviewContent({ id }) {
                         <option value="">Select BP Type...</option>
                         <option value="customer">Customer</option>
                         <option value="vendor">Vendor</option>
+                        <option value="lead">Lead</option>
                       </select>
                       <button
                         onClick={handleSapPush}
@@ -395,6 +396,7 @@ function KycReviewContent({ id }) {
                         <option value="">Select type...</option>
                         <option value="customer">Customer</option>
                         <option value="vendor">Vendor</option>
+                        <option value="lead">Lead</option>
                       </select>
                     </div>
                   </div>

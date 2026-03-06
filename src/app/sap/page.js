@@ -27,13 +27,18 @@ function SapStatusBadge({ entry }) {
 }
 
 function BpTypeBadge({ type }) {
-  const isC = type === 'customer';
+  const config = {
+    customer: { bg: '#dbeafe', color: '#1d4ed8', label: 'Customer', icon: '👤' },
+    vendor: { bg: '#fce7f3', color: '#be185d', label: 'Vendor', icon: '🏭' },
+    lead: { bg: '#fef3c7', color: '#92400e', label: 'Lead', icon: '🎯' },
+  };
+  const c = config[type] || config.customer;
   return (
     <span style={{
       padding: '3px 10px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-      background: isC ? '#dbeafe' : '#fce7f3', color: isC ? '#1d4ed8' : '#be185d',
+      background: c.bg, color: c.color,
     }}>
-      {isC ? '👤 Customer' : '🏭 Vendor'}
+      {c.icon} {c.label}
     </span>
   );
 }
@@ -292,7 +297,7 @@ function KycSapCard({ entry, onPush, pushing, onExpand, expanded }) {
                     Synced to SAP as {entry.sapCardCode}
                   </div>
                   <div style={{ fontSize: 12, color: '#6b7280' }}>
-                    {entry.sapBpType === 'customer' ? 'Customer' : 'Vendor'} · Synced {new Date(entry.sapSyncedAt).toLocaleString()}
+                    {entry.sapBpType === 'customer' ? 'Customer' : entry.sapBpType === 'vendor' ? 'Vendor' : 'Lead'} · Synced {new Date(entry.sapSyncedAt).toLocaleString()}
                   </div>
                 </div>
               </div>
@@ -301,7 +306,7 @@ function KycSapCard({ entry, onPush, pushing, onExpand, expanded }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
                   <span style={{ fontSize: 13, color: '#374151', fontWeight: 600 }}>Push as:</span>
                   <div style={{ display: 'flex', gap: 4 }}>
-                    {['customer', 'vendor'].map(t => (
+                    {['customer', 'vendor', 'lead'].map(t => (
                       <button key={t} onClick={() => setBpType(t)} style={{
                         padding: '6px 16px', borderRadius: 8,
                         border: bpType === t ? '2px solid #2563eb' : '1px solid #d1d5db',
@@ -309,7 +314,7 @@ function KycSapCard({ entry, onPush, pushing, onExpand, expanded }) {
                         color: bpType === t ? '#1d4ed8' : '#4b5563',
                         fontSize: 13, fontWeight: 600, cursor: 'pointer',
                       }}>
-                        {t === 'customer' ? '👤 Customer' : '🏭 Vendor'}
+                        {t === 'customer' ? '👤 Customer' : t === 'vendor' ? '🏭 Vendor' : '🎯 Lead'}
                       </button>
                     ))}
                   </div>
