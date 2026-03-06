@@ -595,6 +595,62 @@ export function findAdvancePaymentTerms(termsList) {
 }
 
 /**
+ * BP type → CardCode prefix mapping.
+ * Used for sequential code generation when Series API fails.
+ */
+const BP_PREFIX = { customer: 'CUS', vendor: 'VEN', lead: 'LED' };
+
+/**
+ * Query SAP for the highest CardCode starting with a given prefix.
+ * Used to generate sequential codes (CUS0001, CUS0002, ...) when Series API fails.
+ *
+ * @param {string} prefix - CardCode prefix (e.g., "CUS", "VEN", "LED")
+ * @param {string} cookies - Session cookies
+ * @param {https.Agent|null} agent
+ * @returns {string|null} The highest CardCode or null if none exist
+ */
+export async function getLastCardCodeByPrefix(prefix, cookies, agent = null) {
+  const filter = encodeURIComponent(`startswith(CardCode,'${prefix}')`);
+  const { data } = await sapRequestWithRetry(
+    'GET',
+    `/b1s/v1/BusinessPartners?$filter=${filter}&$orderby=CardCode desc&$top=1&$select=CardCode`,
+    null, cookies, 2, agent
+  );
+  const items = data?.value || [];
+  console.log(`[SAP] Last CardCode with prefix '${prefix}':`, items.length > 0 ? items[0].CardCode : 'none');
+  return items.length > 0 ? items[0].CardCode : null;
+}
+
+/**
+ * Generate the next sequential CardCode from a prefix and last used code.
+ * e.g., prefix="CUS", lastCode="CUS0005" → "CUS0006"
+ * e.g., prefix="CUS", lastCode=null → "CUS0001"
+ *
+ * @param {string} prefix - CardCode prefix (e.g., "CUS")
+ * @param {string|null} lastCode - The last (highest) CardCode with this prefix
+ * @returns {string} The next CardCode
+ */
+export function generateNextCardCode(prefix, lastCode) {
+  if (!lastCode) return `${prefix}0001`;
+  // Extract numeric part after prefix
+  const numStr = lastCode.substring(prefix.length);
+  const num = parseInt(numStr, 10) || 0;
+  const next = num + 1;
+  // Pad to at least the same length as the original number
+  const padLen = Math.max(numStr.length, 4);
+  return `${prefix}${String(next).padStart(padLen, '0')}`;
+}
+
+/**
+ * Get the CardCode prefix for a BP type.
+ * @param {string} bpType - 'customer', 'vendor', or 'lead'
+ * @returns {string} Prefix like "CUS", "VEN", "LED"
+ */
+export function getCardCodePrefix(bpType) {
+  return BP_PREFIX[bpType] || 'BP';
+}
+
+/**
  * Get the configured SAP attachment path.
  */
 export function getSapAttachmentPath() {

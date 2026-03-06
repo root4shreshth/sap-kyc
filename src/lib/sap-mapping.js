@@ -156,9 +156,10 @@ function cleanSapPayload(obj) {
  * @param {Object} formData - Normalized KYC form data
  * @param {Object} kycRecord - KYC database record
  * @param {string} bpType - 'customer', 'vendor', or 'lead'
- * @param {number|null} seriesNumber - SAP numbering series (if null, falls back to manual CardCode)
+ * @param {number|null} seriesNumber - SAP numbering series (if provided, SAP auto-generates CardCode)
+ * @param {string|null} cardCode - Pre-generated CardCode (e.g., "CUS0002") to use when series unavailable
  */
-export function mapKycToBusinessPartner(formData, kycRecord, bpType, seriesNumber = null) {
+export function mapKycToBusinessPartner(formData, kycRecord, bpType, seriesNumber = null, cardCode = null) {
   const bi = formData.businessInfo || {};
   const cd = formData.companyDetails || {};
   const banks = formData.bankingChecks || [];
@@ -198,9 +199,11 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType, seriesNumbe
     Notes: t(`KYC:${kycRecord.id.substring(0, 36)}`, L.Notes),
   };
 
-  // Use SAP auto-numbering via Series, or fall back to manual CardCode
+  // Use SAP auto-numbering via Series, or pre-generated sequential code, or UUID fallback
   if (seriesNumber) {
     bp.Series = seriesNumber;
+  } else if (cardCode) {
+    bp.CardCode = t(cardCode, L.CardCode);
   } else {
     bp.CardCode = t(generateFallbackCardCode(kycRecord.id, companyName, bpType), L.CardCode);
   }
@@ -349,8 +352,9 @@ export function mapKycToContacts(formData, kycRecord) {
  * @param {Object} kycRecord
  * @param {string} bpType - 'customer', 'vendor', or 'lead'
  * @param {number|null} seriesNumber
+ * @param {string|null} cardCode - Pre-generated CardCode (e.g., "CUS0002") when series unavailable
  */
-export function mapKycToMinimalBusinessPartner(formData, kycRecord, bpType, seriesNumber = null) {
+export function mapKycToMinimalBusinessPartner(formData, kycRecord, bpType, seriesNumber = null, cardCode = null) {
   const bi = formData.businessInfo || {};
   const cd = formData.companyDetails || {};
   const companyName = cd.companyName || bi.businessName || kycRecord.companyName || '';
@@ -360,9 +364,11 @@ export function mapKycToMinimalBusinessPartner(formData, kycRecord, bpType, seri
     CardType: getCardType(bpType),
   };
 
-  // Use SAP auto-numbering via Series, or fall back to manual CardCode
+  // Use SAP auto-numbering via Series, or pre-generated sequential code, or UUID fallback
   if (seriesNumber) {
     payload.Series = seriesNumber;
+  } else if (cardCode) {
+    payload.CardCode = t(cardCode, SAP_LIMITS.CardCode);
   } else {
     payload.CardCode = t(generateFallbackCardCode(kycRecord.id, companyName, bpType), SAP_LIMITS.CardCode);
   }

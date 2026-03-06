@@ -5,6 +5,7 @@ import {
   withSapSession, createBusinessPartner, updateBusinessPartner,
   uploadAttachments, isSapConfigured, createPostAgent,
   getDocumentSeries, findDefaultSeries,
+  getLastCardCodeByPrefix, generateNextCardCode, getCardCodePrefix,
   writeToAttachmentShare, createAttachmentFromPath, getSapAttachmentPath,
 } from '@/lib/sap-client';
 import { mapKycToBusinessPartner, mapKycToMinimalBusinessPartner, mapKycToAddresses, mapKycToContacts, validateForSapPush } from '@/lib/sap-mapping';
@@ -106,22 +107,36 @@ export async function POST(request, { params }) {
 
         // ====== QUERY SAP SERIES (for auto-numbering) ======
         let seriesNumber = null;
+        let sequentialCardCode = null;
         try {
           const seriesList = await getDocumentSeries(cookies, agent);
           const subType = bpType === 'customer' ? 'C' : bpType === 'vendor' ? 'S' : 'L';
           seriesNumber = findDefaultSeries(seriesList, subType);
           stageResults.series = seriesNumber ? `found (series: ${seriesNumber})` : 'no series found for subtype';
-          console.log(`[SAP Push] Series for ${bpType} (subType=${subType}): ${seriesNumber || 'none — will use fallback CardCode'}`);
+          console.log(`[SAP Push] Series for ${bpType} (subType=${subType}): ${seriesNumber || 'none'}`);
         } catch (seriesErr) {
           stageResults.series = `query failed: ${seriesErr.message}`;
-          console.warn('[SAP Push] Series query failed:', seriesErr.message, '— will use fallback CardCode');
+          console.warn('[SAP Push] Series query failed:', seriesErr.message);
+        }
+
+        // If no series found, generate sequential CardCode (CUS0001, VEN0002, etc.)
+        if (!seriesNumber) {
+          const prefix = getCardCodePrefix(bpType);
+          try {
+            const lastCode = await getLastCardCodeByPrefix(prefix, cookies, agent);
+            sequentialCardCode = generateNextCardCode(prefix, lastCode);
+            stageResults.series += ` → sequential fallback: ${sequentialCardCode}`;
+            console.log(`[SAP Push] Sequential CardCode: ${sequentialCardCode} (last: ${lastCode || 'none'})`);
+          } catch (seqErr) {
+            console.warn('[SAP Push] Sequential CardCode query failed:', seqErr.message, '— will use UUID fallback');
+            stageResults.series += ` → sequential query failed: ${seqErr.message}`;
+          }
         }
 
         // ====== BUILD PAYLOAD ======
-        // NOTE: PaymentTermsGrpCode removed — SAP rejects it as invalid on this installation
         const bpPayload = minimal
-          ? mapKycToMinimalBusinessPartner(formData, kyc, bpType, seriesNumber)
-          : mapKycToBusinessPartner(formData, kyc, bpType, seriesNumber);
+          ? mapKycToMinimalBusinessPartner(formData, kyc, bpType, seriesNumber, sequentialCardCode)
+          : mapKycToBusinessPartner(formData, kyc, bpType, seriesNumber, sequentialCardCode);
 
         console.log('[SAP Push] Stage 1 Payload:', JSON.stringify(bpPayload, null, 2));
 

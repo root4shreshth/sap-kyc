@@ -6,6 +6,7 @@ import {
   createPostAgent, sapRequestRaw,
   createPlaceholderAttachment,
   getDocumentSeries, findDefaultSeries,
+  getLastCardCodeByPrefix, generateNextCardCode, getCardCodePrefix,
   writeToAttachmentShare, createAttachmentFromPath, getSapAttachmentPath,
 } from '@/lib/sap-client';
 
@@ -92,8 +93,25 @@ export async function POST(request) {
       console.warn('[SAP Deep Test] Series query failed:', seriesErr.message);
     }
 
-    // Build test payloads — use Series if available, fall back to manual CardCode
-    const testCardCode = testSeriesNumber ? null : `ZTEST${Date.now().toString().slice(-6)}`;
+    // Build test payloads — use Series if available, fall back to sequential CardCode
+    let testCardCode = null;
+    if (testSeriesNumber) {
+      // Series available — SAP will auto-generate CardCode
+    } else {
+      // No series — try sequential code generation (CUS0001, CUS0002, ...)
+      const testPrefix = getCardCodePrefix('customer');
+      try {
+        const lastCode = await getLastCardCodeByPrefix(testPrefix, cookies, loginAgent);
+        testCardCode = generateNextCardCode(testPrefix, lastCode);
+        results.sequentialCode = { status: 'success', lastCode, nextCode: testCardCode };
+        console.log(`[SAP Deep Test] Sequential code: ${testCardCode} (last: ${lastCode || 'none'})`);
+      } catch (seqErr) {
+        testCardCode = `ZTEST${Date.now().toString().slice(-6)}`;
+        results.sequentialCode = { status: 'failed', error: seqErr.message, fallback: testCardCode };
+        console.warn('[SAP Deep Test] Sequential code failed:', seqErr.message, '→ using', testCardCode);
+      }
+    }
+
     const testPayload = { CardName: 'API Deep Test - Delete Me', CardType: 'cCustomer' };
     const testPayloadNoType = { CardName: 'API Deep Test - Delete Me' };
 

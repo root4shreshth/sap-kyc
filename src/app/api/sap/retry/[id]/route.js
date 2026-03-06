@@ -4,6 +4,7 @@ import { getKycById, getKycFormData, updateKycSapStatus, createAuditEntry, creat
 import {
   withSapSession, createBusinessPartner, isSapConfigured,
   getDocumentSeries, findDefaultSeries,
+  getLastCardCodeByPrefix, generateNextCardCode, getCardCodePrefix,
 } from '@/lib/sap-client';
 import { mapKycToBusinessPartner, validateForSapPush } from '@/lib/sap-mapping';
 
@@ -73,6 +74,7 @@ export async function POST(request, { params }) {
       const sapResult = await withSapSession(async (cookies, agent) => {
         // Query series for auto-numbering
         let seriesNumber = null;
+        let sequentialCardCode = null;
         try {
           const seriesList = await getDocumentSeries(cookies, agent);
           const subType = bpType === 'customer' ? 'C' : bpType === 'vendor' ? 'S' : 'L';
@@ -82,8 +84,19 @@ export async function POST(request, { params }) {
           console.warn('[SAP Retry] Series query failed:', seriesErr.message);
         }
 
-        // Build payload (no PaymentTermsGrpCode — SAP rejects it, no attachment — SAP team disabled requirement)
-        const bpPayload = mapKycToBusinessPartner(formData, kyc, bpType, seriesNumber);
+        // If no series, generate sequential CardCode (CUS0001, VEN0002, etc.)
+        if (!seriesNumber) {
+          const prefix = getCardCodePrefix(bpType);
+          try {
+            const lastCode = await getLastCardCodeByPrefix(prefix, cookies, agent);
+            sequentialCardCode = generateNextCardCode(prefix, lastCode);
+            console.log(`[SAP Retry] Sequential CardCode: ${sequentialCardCode}`);
+          } catch (seqErr) {
+            console.warn('[SAP Retry] Sequential CardCode query failed:', seqErr.message);
+          }
+        }
+
+        const bpPayload = mapKycToBusinessPartner(formData, kyc, bpType, seriesNumber, sequentialCardCode);
         return await createBusinessPartner(bpPayload, cookies);
       });
 
