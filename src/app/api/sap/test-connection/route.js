@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import {
-  sapLogin, sapLogout, isSapConfigured, withSapSession,
+  sapLogin, sapLogout, isSapConfigured,
   createBusinessPartner, getBusinessPartner,
-  createSapAgent, createPostAgent, sapRequestRaw,
+  createPostAgent, sapRequestRaw,
   createPlaceholderAttachment,
   getDocumentSeries, findDefaultSeries,
-  getPaymentTerms, findAdvancePaymentTerms,
+  writeToAttachmentShare, createAttachmentFromPath, getSapAttachmentPath,
 } from '@/lib/sap-client';
 
 export async function POST(request) {
@@ -47,11 +47,10 @@ export async function POST(request) {
     }
 
     // ====== DEEP TEST: Multi-strategy BP creation diagnostic ======
-    // Tests Login → Series query → Payment terms → GET BP → POST strategies → report
+    // Tests Login → Series query → GET BP → Attachment test → POST strategies → report
     const results = {
       login: null,
       series: null,
-      paymentTerms: null,
       getBP: null,
     };
 
@@ -93,21 +92,6 @@ export async function POST(request) {
       console.warn('[SAP Deep Test] Series query failed:', seriesErr.message);
     }
 
-    // Step 2b: Query payment terms
-    const ptStart = Date.now();
-    try {
-      const termsList = await getPaymentTerms(cookies, loginAgent);
-      const advanceCode = findAdvancePaymentTerms(termsList);
-      results.paymentTerms = {
-        status: 'success',
-        advanceCode,
-        terms: termsList.map(t => ({ code: t.GroupNumber, name: t.PaymentTermsGroupName })),
-        durationMs: Date.now() - ptStart,
-      };
-    } catch (ptErr) {
-      results.paymentTerms = { status: 'failed', error: ptErr.message, durationMs: Date.now() - ptStart };
-    }
-
     // Build test payloads — use Series if available, fall back to manual CardCode
     const testCardCode = testSeriesNumber ? null : `ZTEST${Date.now().toString().slice(-6)}`;
     const testPayload = { CardName: 'API Deep Test - Delete Me', CardType: 'cCustomer' };
@@ -139,21 +123,78 @@ export async function POST(request) {
       };
     }
 
-    // Step 3: Create placeholder attachment (SAP requires AttachmentEntry on every BP)
+    // Step 3: Test attachment creation (dual-path: multipart → SourcePath)
     let testAttachmentEntry = null;
     const attachStart = Date.now();
+    const attachmentSharePath = getSapAttachmentPath();
+
+    // Method A: Try multipart upload (placeholder file)
     try {
       const attachAgent = createPostAgent();
       try {
         testAttachmentEntry = await createPlaceholderAttachment(cookies, attachAgent);
-        results.attachment = { status: 'success', entry: testAttachmentEntry, durationMs: Date.now() - attachStart };
-        console.log('[SAP Deep Test] Placeholder attachment created, entry:', testAttachmentEntry);
+        results.attachment = {
+          status: 'success',
+          method: 'multipart',
+          entry: testAttachmentEntry,
+          durationMs: Date.now() - attachStart,
+        };
+        console.log('[SAP Deep Test] Multipart attachment created, entry:', testAttachmentEntry);
       } finally {
         try { attachAgent.destroy(); } catch { /* ignore */ }
       }
-    } catch (attachErr) {
-      results.attachment = { status: 'failed', error: attachErr.message, durationMs: Date.now() - attachStart };
-      console.error('[SAP Deep Test] Placeholder attachment failed:', attachErr.message);
+    } catch (multipartErr) {
+      console.warn('[SAP Deep Test] Multipart attachment failed:', multipartErr.message);
+
+      // Method B: Try SourcePath if SAP_ATTACHMENT_PATH is configured
+      if (attachmentSharePath) {
+        try {
+          // Write a small test file to the network share
+          const testContent = Buffer.from(`SAP Deep Test placeholder.\nCreated: ${new Date().toISOString()}\n`, 'utf-8');
+          const writeResult = await writeToAttachmentShare(testContent, 'deep-test-placeholder.txt', 'test');
+          console.log('[SAP Deep Test] Test file written to share:', writeResult.fullPath);
+
+          // Try SourcePath attachment
+          const pathAgent = createPostAgent();
+          try {
+            const lastDot = writeResult.fileName.lastIndexOf('.');
+            const nameNoExt = lastDot > 0 ? writeResult.fileName.substring(0, lastDot) : writeResult.fileName;
+            const ext = lastDot > 0 ? writeResult.fileName.substring(lastDot + 1) : 'txt';
+
+            testAttachmentEntry = await createAttachmentFromPath(
+              [{ fileName: nameNoExt, fileExtension: ext, sourcePath: attachmentSharePath }],
+              cookies, pathAgent
+            );
+            results.attachment = {
+              status: 'success',
+              method: 'sourcepath',
+              entry: testAttachmentEntry,
+              shareFile: writeResult.fullPath,
+              durationMs: Date.now() - attachStart,
+            };
+            console.log('[SAP Deep Test] SourcePath attachment created, entry:', testAttachmentEntry);
+          } finally {
+            try { pathAgent.destroy(); } catch { /* ignore */ }
+          }
+        } catch (spErr) {
+          results.attachment = {
+            status: 'failed',
+            multipartError: multipartErr.message,
+            sourcepathError: spErr.message,
+            sharePath: attachmentSharePath,
+            durationMs: Date.now() - attachStart,
+          };
+          console.error('[SAP Deep Test] Both attachment methods failed');
+        }
+      } else {
+        results.attachment = {
+          status: 'failed',
+          error: multipartErr.message,
+          note: 'SAP_ATTACHMENT_PATH not configured — SourcePath fallback unavailable',
+          durationMs: Date.now() - attachStart,
+        };
+        console.error('[SAP Deep Test] Multipart failed, no SAP_ATTACHMENT_PATH for fallback');
+      }
       // Don't return early — let strategies run anyway to capture the exact error
     }
 

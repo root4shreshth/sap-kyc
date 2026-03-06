@@ -3,8 +3,9 @@ import { requireAuth } from '@/lib/auth';
 import { getKycById, getKycFormData, getDocsByKycId, updateKycSapStatus, createAuditEntry, createSapSyncLog, updateSapSyncLog } from '@/lib/db';
 import {
   withSapSession, createBusinessPartner, updateBusinessPartner,
-  uploadAttachments, createPlaceholderAttachment, isSapConfigured, createPostAgent,
-  getDocumentSeries, findDefaultSeries, getPaymentTerms, findAdvancePaymentTerms,
+  uploadAttachments, isSapConfigured, createPostAgent,
+  getDocumentSeries, findDefaultSeries,
+  writeToAttachmentShare, createAttachmentFromPath, getSapAttachmentPath,
 } from '@/lib/sap-client';
 import { mapKycToBusinessPartner, mapKycToMinimalBusinessPartner, mapKycToAddresses, mapKycToContacts, validateForSapPush } from '@/lib/sap-mapping';
 import { downloadFile } from '@/lib/storage';
@@ -96,6 +97,7 @@ export async function POST(request, { params }) {
     let sapResult;
     let attachmentEntry = null;
     let attachmentWarnings = [];
+    let filesWrittenToShare = [];
     let stageResults = { series: null, stage1: null, stage2: null, stage3: null, attachments: null };
 
     try {
@@ -115,26 +117,20 @@ export async function POST(request, { params }) {
           console.warn('[SAP Push] Series query failed:', seriesErr.message, '— will use fallback CardCode');
         }
 
-        // ====== QUERY PAYMENT TERMS ======
-        let paymentTermsCode = null;
-        try {
-          const termsList = await getPaymentTerms(cookies, agent);
-          paymentTermsCode = findAdvancePaymentTerms(termsList);
-          console.log(`[SAP Push] Payment terms code (100% Advance): ${paymentTermsCode ?? 'not found'}`);
-        } catch (ptErr) {
-          console.warn('[SAP Push] Payment terms query failed:', ptErr.message, '— skipping');
-        }
-
         // ====== BUILD PAYLOAD ======
+        // NOTE: PaymentTermsGrpCode removed — SAP rejects it as invalid on this installation
         const bpPayload = minimal
-          ? mapKycToMinimalBusinessPartner(formData, kyc, bpType, seriesNumber, paymentTermsCode)
-          : mapKycToBusinessPartner(formData, kyc, bpType, seriesNumber, paymentTermsCode);
+          ? mapKycToMinimalBusinessPartner(formData, kyc, bpType, seriesNumber)
+          : mapKycToBusinessPartner(formData, kyc, bpType, seriesNumber);
 
         console.log('[SAP Push] Stage 1 Payload:', JSON.stringify(bpPayload, null, 2));
 
-        // ====== ATTACHMENT UPLOAD (before BP creation) ======
-        // SAP B1 REQUIRES an AttachmentEntry on every Business Partner.
-        // If real documents exist, upload them. Otherwise, create a placeholder.
+        // ====== ATTACHMENT HANDLING (Dual-Path Strategy) ======
+        // Method A: Multipart upload to SAP Attachments2 (works once SAP folder configured)
+        // Method B: Write to network share + SourcePath JSON (works when on same network)
+        // If both fail, proceed without attachment (SAP team has turned off mandatory attachment)
+        const attachmentSharePath = getSapAttachmentPath();
+
         if (docs.length > 0) {
           console.log(`[SAP Push] Downloading ${docs.length} files from Supabase...`);
           const filesToUpload = [];
@@ -156,43 +152,82 @@ export async function POST(request, { params }) {
           }
 
           if (filesToUpload.length > 0) {
+            // --- Method A: Try multipart upload to SAP Attachments2 ---
             try {
-              console.log(`[SAP Push] Uploading ${filesToUpload.length} files to SAP Attachments2...`);
+              console.log(`[SAP Push] Method A: Uploading ${filesToUpload.length} files to SAP Attachments2 (multipart)...`);
               const attachAgent = createPostAgent();
               try {
                 const attachResult = await uploadAttachments(filesToUpload, cookies, attachAgent);
                 attachmentEntry = attachResult?.AbsoluteEntry;
-                stageResults.attachments = `success (entry: ${attachmentEntry}, ${filesToUpload.length} file(s))`;
-                console.log('[SAP Push] Attachments uploaded, AbsoluteEntry:', attachmentEntry);
+                stageResults.attachments = `multipart success (entry: ${attachmentEntry}, ${filesToUpload.length} file(s))`;
+                console.log('[SAP Push] Method A success! AbsoluteEntry:', attachmentEntry);
               } finally {
                 try { attachAgent.destroy(); } catch { /* ignore */ }
               }
             } catch (attErr) {
-              console.warn('[SAP Push] Real attachment upload failed:', attErr.message);
-              attachmentWarnings.push(`SAP upload failed: ${attErr.message}`);
+              console.warn('[SAP Push] Method A (multipart upload) failed:', attErr.message);
+              attachmentWarnings.push(`Multipart upload failed: ${attErr.message}`);
+
+              // --- Method B: Write to network share + SourcePath ---
+              if (attachmentSharePath) {
+                console.log(`[SAP Push] Method B: Writing ${filesToUpload.length} files to network share: ${attachmentSharePath}`);
+
+                for (const file of filesToUpload) {
+                  try {
+                    const writeResult = await writeToAttachmentShare(file.buffer, file.fileName, id);
+                    console.log(`[SAP Push] Written to share: ${writeResult.fullPath}`);
+
+                    // Parse filename and extension for SourcePath entry
+                    const lastDot = writeResult.fileName.lastIndexOf('.');
+                    const nameNoExt = lastDot > 0 ? writeResult.fileName.substring(0, lastDot) : writeResult.fileName;
+                    const ext = lastDot > 0 ? writeResult.fileName.substring(lastDot + 1) : '';
+
+                    filesWrittenToShare.push({
+                      fileName: nameNoExt,
+                      fileExtension: ext,
+                      sourcePath: attachmentSharePath,
+                      fullPath: writeResult.fullPath,
+                    });
+                  } catch (writeErr) {
+                    console.warn(`[SAP Push] Failed to write "${file.fileName}" to share:`, writeErr.message);
+                    attachmentWarnings.push(`Network share write failed: ${file.fileName} — ${writeErr.message}`);
+                  }
+                }
+
+                // Try creating SAP attachment entry via SourcePath
+                if (filesWrittenToShare.length > 0) {
+                  try {
+                    console.log(`[SAP Push] Method B: Creating SourcePath attachment for ${filesWrittenToShare.length} file(s)...`);
+                    const pathAgent = createPostAgent();
+                    try {
+                      attachmentEntry = await createAttachmentFromPath(filesWrittenToShare, cookies, pathAgent);
+                      stageResults.attachments = `sourcepath success (entry: ${attachmentEntry}, ${filesWrittenToShare.length} file(s) on share)`;
+                      console.log('[SAP Push] Method B success! AbsoluteEntry:', attachmentEntry);
+                    } finally {
+                      try { pathAgent.destroy(); } catch { /* ignore */ }
+                    }
+                  } catch (spErr) {
+                    console.warn('[SAP Push] Method B (SourcePath) failed:', spErr.message);
+                    attachmentWarnings.push(`SourcePath attachment failed: ${spErr.message}`);
+                    stageResults.attachments = `both methods failed (files on share: ${filesWrittenToShare.length}). Multipart: ${attErr.message}. SourcePath: ${spErr.message}`;
+                  }
+                } else {
+                  stageResults.attachments = `multipart failed, all share writes failed`;
+                }
+              } else {
+                stageResults.attachments = `multipart failed: ${attErr.message} (SAP_ATTACHMENT_PATH not set — no fallback)`;
+                console.warn('[SAP Push] No SAP_ATTACHMENT_PATH configured — cannot fall back to Method B');
+              }
             }
           } else {
-            console.warn('[SAP Push] All document downloads failed — will create placeholder');
+            console.warn('[SAP Push] All document downloads failed');
             attachmentWarnings.push(`All ${docs.length} document downloads failed`);
+            stageResults.attachments = 'all downloads failed';
           }
-        }
-
-        // If we still don't have an attachment entry, create a placeholder
-        if (!attachmentEntry) {
-          console.log('[SAP Push] Creating placeholder attachment (SAP requires AttachmentEntry)...');
-          const placeholderAgent = createPostAgent();
-          try {
-            attachmentEntry = await createPlaceholderAttachment(cookies, placeholderAgent);
-            const reason = skipAttachments || minimal ? 'user chose minimal/no-docs' : 'no real docs available';
-            stageResults.attachments = `placeholder (entry: ${attachmentEntry}, reason: ${reason})`;
-            console.log('[SAP Push] Placeholder attachment created, AbsoluteEntry:', attachmentEntry);
-          } catch (phErr) {
-            console.error('[SAP Push] Placeholder attachment failed:', phErr.message);
-            stageResults.attachments = `placeholder failed: ${phErr.message}`;
-            attachmentWarnings.push(`Placeholder attachment failed: ${phErr.message}`);
-          } finally {
-            try { placeholderAgent.destroy(); } catch { /* ignore */ }
-          }
+        } else if (!minimal && !skipAttachments) {
+          stageResults.attachments = 'no documents found';
+        } else {
+          stageResults.attachments = `skipped (minimal=${!!minimal}, skipAttachments=${!!skipAttachments})`;
         }
 
         // ====== STAGE 1: Create BP with core fields only (POST) ======
@@ -289,6 +324,7 @@ export async function POST(request, { params }) {
         docsFound: docs.length,
         attachmentUploaded: !!attachmentEntry,
         attachmentEntry,
+        filesOnShare: filesWrittenToShare.length > 0 ? filesWrittenToShare.map(f => f.fullPath) : undefined,
         attachmentWarnings,
         stageResults,
         hint,
@@ -325,7 +361,7 @@ export async function POST(request, { params }) {
       action: 'SAP_BP_CREATED',
       actor: user.email,
       kycId: id,
-      details: `Business Partner ${cardCode} created as ${BP_TYPE_LABEL[bpType] || bpType}${attachmentEntry ? ` with attachment #${attachmentEntry}` : ''}${partialWarnings.length > 0 ? ` (${partialWarnings.join(', ')})` : ''}`,
+      details: `Business Partner ${cardCode} created as ${BP_TYPE_LABEL[bpType] || bpType}${attachmentEntry ? ` with attachment #${attachmentEntry}` : ''}${filesWrittenToShare.length > 0 ? ` (${filesWrittenToShare.length} file(s) on share)` : ''}${partialWarnings.length > 0 ? ` (${partialWarnings.join(', ')})` : ''}`,
     });
 
     console.log('[SAP Push] Success! CardCode:', cardCode, 'Stages:', JSON.stringify(stageResults));
@@ -340,7 +376,8 @@ export async function POST(request, { params }) {
       stageResults,
       docsAttached: docs.length,
       durationMs: duration,
-      message: `Business Partner ${cardCode} created in SAP as ${BP_TYPE_LABEL[bpType] || bpType}${partialWarnings.length > 0 ? ` (note: ${partialWarnings.join(', ')})` : ''}${attachmentEntry ? ` with ${docs.length} document(s) attached` : ''}`,
+      filesOnShare: filesWrittenToShare.length > 0 ? filesWrittenToShare.map(f => f.fullPath) : undefined,
+      message: `Business Partner ${cardCode} created in SAP as ${BP_TYPE_LABEL[bpType] || bpType}${partialWarnings.length > 0 ? ` (note: ${partialWarnings.join(', ')})` : ''}${attachmentEntry ? ` with ${docs.length} document(s) attached` : ''}${!attachmentEntry && filesWrittenToShare.length > 0 ? ` (${filesWrittenToShare.length} file(s) saved to network share)` : ''}`,
     });
   } catch (err) {
     console.error('[SAP Push] Unexpected error:', err);

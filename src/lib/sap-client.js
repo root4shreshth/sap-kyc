@@ -19,6 +19,8 @@ import https from 'https';
 import http from 'http';
 import { URL } from 'url';
 import { constants as cryptoConstants } from 'crypto';
+import fs from 'fs/promises';
+import pathModule from 'path';
 
 // Configurable delay after login before first API call (ms).
 // Gives SAP SL session time to stabilize. Default 500ms.
@@ -509,15 +511,30 @@ export async function getBusinessPartner(cardCode, cookies, agent = null) {
  * DocumentSubType: "C" = Customer, "S" = Supplier, "L" = Lead
  */
 export async function getDocumentSeries(cookies, agent = null) {
-  const { data } = await sapRequestWithRetry(
-    'POST',
-    '/b1s/v1/SeriesService_GetDocumentSeries',
-    { DocumentTypeParams: { Document: '2' } },
-    cookies,
-    2,
-    agent
-  );
-  return data?.value || [];
+  // SAP B1 versions differ on whether Document should be integer or string.
+  // Try integer first (more common), fall back to string.
+  const path = '/b1s/v1/SeriesService_GetDocumentSeries';
+  try {
+    const { data } = await sapRequestWithRetry(
+      'POST', path,
+      { DocumentTypeParams: { Document: 2 } },
+      cookies, 2, agent
+    );
+    return data?.value || [];
+  } catch (err1) {
+    console.warn('[SAP] Series query with integer Document:2 failed:', err1.message, '— trying string format');
+    try {
+      const { data } = await sapRequestWithRetry(
+        'POST', path,
+        { DocumentTypeParams: { Document: '2' } },
+        cookies, 2, agent
+      );
+      return data?.value || [];
+    } catch (err2) {
+      console.warn('[SAP] Series query with string Document:"2" also failed:', err2.message);
+      throw err2;
+    }
+  }
 }
 
 /**
@@ -582,6 +599,68 @@ export function findAdvancePaymentTerms(termsList) {
  */
 export function getSapAttachmentPath() {
   return process.env.SAP_ATTACHMENT_PATH || '';
+}
+
+/**
+ * Write a file to the SAP attachment network share.
+ * Uses SAP_ATTACHMENT_PATH env var (e.g., \\192.168.1.99\SAP_Attachements\Attachments).
+ * Adds KYC ID prefix to avoid filename collisions.
+ *
+ * Works on Windows when app is on the same network as the file server.
+ * For remote hosting, use multipart upload (Method A) instead — once SAP
+ * attachment folder is configured in General Settings, multipart works from anywhere.
+ *
+ * @param {Buffer} buffer - File content
+ * @param {string} fileName - Original file name
+ * @param {string} kycId - KYC record ID (for unique prefix)
+ * @returns {{ fullPath: string, fileName: string }} Path and sanitized filename
+ */
+export async function writeToAttachmentShare(buffer, fileName, kycId) {
+  const attachPath = process.env.SAP_ATTACHMENT_PATH;
+  if (!attachPath) throw new Error('SAP_ATTACHMENT_PATH not configured');
+
+  // Sanitize filename, prefix with short KYC ID to avoid collisions
+  const shortId = (kycId || 'unknown').replace(/-/g, '').substring(0, 8);
+  const safeName = (fileName || 'document.pdf').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_');
+  const finalName = `${shortId}_${Date.now()}_${safeName}`;
+  const fullPath = pathModule.join(attachPath, finalName);
+
+  await fs.writeFile(fullPath, buffer);
+  console.log(`[SAP] File written to attachment share: ${fullPath} (${buffer.length} bytes)`);
+  return { fullPath, fileName: finalName };
+}
+
+/**
+ * Create SAP attachment entry using SourcePath approach.
+ * The file must already exist at the SourcePath location.
+ * POST JSON to /b1s/v1/Attachments2 with Attachments_Lines referencing file locations.
+ *
+ * @param {Array<{ fileName: string, fileExtension: string, sourcePath: string }>} fileEntries
+ * @param {string} cookies - Session cookies
+ * @param {https.Agent|null} agent
+ * @returns {number} AbsoluteEntry of the created attachment
+ */
+export async function createAttachmentFromPath(fileEntries, cookies, agent = null) {
+  const payload = {
+    Attachments_Lines: fileEntries.map((f, i) => ({
+      SourcePath: f.sourcePath,
+      FileName: f.fileName,
+      FileExtension: f.fileExtension,
+      Override: 'tNO',
+      LineNum: i,
+    })),
+  };
+
+  console.log('[SAP] Creating SourcePath attachment with', fileEntries.length, 'file(s)');
+  const { data } = await sapRequestWithRetry(
+    'POST', '/b1s/v1/Attachments2', payload, cookies, 2, agent
+  );
+
+  if (!data?.AbsoluteEntry) {
+    throw new Error('SourcePath attachment created but no AbsoluteEntry returned');
+  }
+  console.log('[SAP] SourcePath attachment created, AbsoluteEntry:', data.AbsoluteEntry);
+  return data.AbsoluteEntry;
 }
 
 /**

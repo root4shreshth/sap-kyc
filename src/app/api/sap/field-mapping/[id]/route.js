@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getKycById, getKycFormData } from '@/lib/db';
-import { mapKycToBusinessPartner, mapKycToMinimalBusinessPartner, mapKycToAddresses, mapKycToContacts, getCardCode, validateForSapPush } from '@/lib/sap-mapping';
+import { mapKycToBusinessPartner, mapKycToMinimalBusinessPartner, mapKycToAddresses, mapKycToContacts, validateForSapPush } from '@/lib/sap-mapping';
 
 export async function GET(request, { params }) {
   const { error } = requireAuth(request, ['Admin']);
@@ -23,20 +23,26 @@ export async function GET(request, { params }) {
     const validation = validateForSapPush(formData);
 
     // Show exactly what each stage would send to SAP
+    // Note: mapKycToAddresses needs a cardCode (from SAP), using placeholder for preview
     const customerPayloads = {
       stage1_create: mapKycToBusinessPartner(formData, kyc, 'customer'),
-      stage2_addresses: mapKycToAddresses(formData, kyc, 'customer'),
-      stage3_contacts: mapKycToContacts(formData, kyc, 'customer'),
+      stage2_addresses: mapKycToAddresses(formData, kyc, 'PREVIEW_CODE'),
+      stage3_contacts: mapKycToContacts(formData, kyc),
       minimal: mapKycToMinimalBusinessPartner(formData, kyc, 'customer'),
-      cardCode: getCardCode(formData, kyc, 'customer'),
     };
 
     const vendorPayloads = {
       stage1_create: mapKycToBusinessPartner(formData, kyc, 'vendor'),
-      stage2_addresses: mapKycToAddresses(formData, kyc, 'vendor'),
-      stage3_contacts: mapKycToContacts(formData, kyc, 'vendor'),
+      stage2_addresses: mapKycToAddresses(formData, kyc, 'PREVIEW_CODE'),
+      stage3_contacts: mapKycToContacts(formData, kyc),
       minimal: mapKycToMinimalBusinessPartner(formData, kyc, 'vendor'),
-      cardCode: getCardCode(formData, kyc, 'vendor'),
+    };
+
+    const leadPayloads = {
+      stage1_create: mapKycToBusinessPartner(formData, kyc, 'lead'),
+      stage2_addresses: mapKycToAddresses(formData, kyc, 'PREVIEW_CODE'),
+      stage3_contacts: mapKycToContacts(formData, kyc),
+      minimal: mapKycToMinimalBusinessPartner(formData, kyc, 'lead'),
     };
 
     return NextResponse.json({
@@ -53,6 +59,7 @@ export async function GET(request, { params }) {
       },
       customer: customerPayloads,
       vendor: vendorPayloads,
+      lead: leadPayloads,
       rawFormData: formData,
     });
   } catch (err) {

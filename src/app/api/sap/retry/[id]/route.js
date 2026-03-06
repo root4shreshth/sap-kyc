@@ -2,9 +2,8 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/lib/auth';
 import { getKycById, getKycFormData, updateKycSapStatus, createAuditEntry, createSapSyncLog, updateSapSyncLog } from '@/lib/db';
 import {
-  withSapSession, createBusinessPartner, isSapConfigured, createPostAgent,
-  createPlaceholderAttachment, getDocumentSeries, findDefaultSeries,
-  getPaymentTerms, findAdvancePaymentTerms,
+  withSapSession, createBusinessPartner, isSapConfigured,
+  getDocumentSeries, findDefaultSeries,
 } from '@/lib/sap-client';
 import { mapKycToBusinessPartner, validateForSapPush } from '@/lib/sap-mapping';
 
@@ -83,34 +82,9 @@ export async function POST(request, { params }) {
           console.warn('[SAP Retry] Series query failed:', seriesErr.message);
         }
 
-        // Query payment terms
-        let paymentTermsCode = null;
-        try {
-          const termsList = await getPaymentTerms(cookies, agent);
-          paymentTermsCode = findAdvancePaymentTerms(termsList);
-        } catch (ptErr) {
-          console.warn('[SAP Retry] Payment terms query failed:', ptErr.message);
-        }
-
-        // Build payload with series + payment terms
-        const bpPayload = mapKycToBusinessPartner(formData, kyc, bpType, seriesNumber, paymentTermsCode);
-
-        // Create placeholder attachment (SAP requires one)
-        let attachmentEntry = null;
-        const placeholderAgent = createPostAgent();
-        try {
-          attachmentEntry = await createPlaceholderAttachment(cookies, placeholderAgent);
-          console.log('[SAP Retry] Placeholder attachment:', attachmentEntry);
-        } catch (phErr) {
-          console.warn('[SAP Retry] Placeholder attachment failed:', phErr.message);
-        } finally {
-          try { placeholderAgent.destroy(); } catch { /* ignore */ }
-        }
-
-        const createPayload = { ...bpPayload };
-        if (attachmentEntry) createPayload.AttachmentEntry = attachmentEntry;
-
-        return await createBusinessPartner(createPayload, cookies);
+        // Build payload (no PaymentTermsGrpCode — SAP rejects it, no attachment — SAP team disabled requirement)
+        const bpPayload = mapKycToBusinessPartner(formData, kyc, bpType, seriesNumber);
+        return await createBusinessPartner(bpPayload, cookies);
       });
 
       const duration = Date.now() - startTime;

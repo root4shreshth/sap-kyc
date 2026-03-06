@@ -157,9 +157,8 @@ function cleanSapPayload(obj) {
  * @param {Object} kycRecord - KYC database record
  * @param {string} bpType - 'customer', 'vendor', or 'lead'
  * @param {number|null} seriesNumber - SAP numbering series (if null, falls back to manual CardCode)
- * @param {number|null} paymentTermsCode - SAP PaymentTermsGrpCode (e.g., code for "100% Advance")
  */
-export function mapKycToBusinessPartner(formData, kycRecord, bpType, seriesNumber = null, paymentTermsCode = null) {
+export function mapKycToBusinessPartner(formData, kycRecord, bpType, seriesNumber = null) {
   const bi = formData.businessInfo || {};
   const cd = formData.companyDetails || {};
   const banks = formData.bankingChecks || [];
@@ -206,10 +205,9 @@ export function mapKycToBusinessPartner(formData, kycRecord, bpType, seriesNumbe
     bp.CardCode = t(generateFallbackCardCode(kycRecord.id, companyName, bpType), L.CardCode);
   }
 
-  // Set default payment terms if available
-  if (paymentTermsCode !== null && paymentTermsCode !== undefined) {
-    bp.PaymentTermsGrpCode = paymentTermsCode;
-  }
+  // NOTE: PaymentTermsGrpCode is NOT sent — SAP B1 rejects it as invalid
+  // on this installation (similar to VatRegistrationNumber). If needed in
+  // future, the SAP team must confirm the correct property name.
 
   return cleanSapPayload(bp);
 }
@@ -351,9 +349,8 @@ export function mapKycToContacts(formData, kycRecord) {
  * @param {Object} kycRecord
  * @param {string} bpType - 'customer', 'vendor', or 'lead'
  * @param {number|null} seriesNumber
- * @param {number|null} paymentTermsCode
  */
-export function mapKycToMinimalBusinessPartner(formData, kycRecord, bpType, seriesNumber = null, paymentTermsCode = null) {
+export function mapKycToMinimalBusinessPartner(formData, kycRecord, bpType, seriesNumber = null) {
   const bi = formData.businessInfo || {};
   const cd = formData.companyDetails || {};
   const companyName = cd.companyName || bi.businessName || kycRecord.companyName || '';
@@ -375,10 +372,6 @@ export function mapKycToMinimalBusinessPartner(formData, kycRecord, bpType, seri
 
   const email = cd.email || kycRecord.email;
   if (email) payload.EmailAddress = t(email, SAP_LIMITS.Email);
-
-  if (paymentTermsCode !== null && paymentTermsCode !== undefined) {
-    payload.PaymentTermsGrpCode = paymentTermsCode;
-  }
 
   return payload;
 }
