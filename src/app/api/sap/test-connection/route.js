@@ -4,6 +4,7 @@ import {
   sapLogin, sapLogout, isSapConfigured, withSapSession,
   createBusinessPartner, getBusinessPartner,
   createSapAgent, createPostAgent, sapRequestRaw,
+  createPlaceholderAttachment,
 } from '@/lib/sap-client';
 
 export async function POST(request) {
@@ -89,7 +90,31 @@ export async function POST(request) {
       };
     }
 
-    // Step 3: Post-login delay
+    // Step 3: Create placeholder attachment (SAP requires AttachmentEntry on every BP)
+    let testAttachmentEntry = null;
+    const attachStart = Date.now();
+    try {
+      const attachAgent = createPostAgent();
+      try {
+        testAttachmentEntry = await createPlaceholderAttachment(cookies, attachAgent);
+        results.attachment = { status: 'success', entry: testAttachmentEntry, durationMs: Date.now() - attachStart };
+        console.log('[SAP Deep Test] Placeholder attachment created, entry:', testAttachmentEntry);
+      } finally {
+        try { attachAgent.destroy(); } catch { /* ignore */ }
+      }
+    } catch (attachErr) {
+      results.attachment = { status: 'failed', error: attachErr.message, durationMs: Date.now() - attachStart };
+      console.error('[SAP Deep Test] Placeholder attachment failed:', attachErr.message);
+      // Don't return early — let strategies run anyway to capture the exact error
+    }
+
+    // Add AttachmentEntry to test payloads if we got one
+    if (testAttachmentEntry) {
+      testPayload.AttachmentEntry = testAttachmentEntry;
+      testPayloadNoType.AttachmentEntry = testAttachmentEntry;
+    }
+
+    // Step 3b: Post-login delay
     await new Promise(r => setTimeout(r, 500));
 
     // Step 4: Test 6 connection strategies for POST /BusinessPartners
