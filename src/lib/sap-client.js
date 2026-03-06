@@ -677,7 +677,8 @@ export async function writeToAttachmentShare(buffer, fileName, kycId) {
 
   // Sanitize filename, prefix with short KYC ID to avoid collisions
   const shortId = (kycId || 'unknown').replace(/-/g, '').substring(0, 8);
-  const safeName = (fileName || 'document.pdf').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_');
+  // Replace spaces AND special chars — SAP has issues with spaces in attachment filenames
+  const safeName = (fileName || 'document.pdf').replace(/[<>:"/\\|?*\x00-\x1f\s]+/g, '_');
   const finalName = `${shortId}_${Date.now()}_${safeName}`;
   const fullPath = pathModule.join(attachPath, finalName);
 
@@ -697,17 +698,26 @@ export async function writeToAttachmentShare(buffer, fileName, kycId) {
  * @returns {number} AbsoluteEntry of the created attachment
  */
 export async function createAttachmentFromPath(fileEntries, cookies, agent = null) {
+  // SAP B1 Service Layer expects "Attachments2_Lines" (NOT "Attachments_Lines")
+  // SourcePath = directory where file lives (no trailing separator)
+  // FileName = name WITHOUT extension
+  // FileExtension = extension WITHOUT leading dot
   const payload = {
-    Attachments_Lines: fileEntries.map((f, i) => ({
-      SourcePath: f.sourcePath,
-      FileName: f.fileName,
-      FileExtension: f.fileExtension,
-      Override: 'tNO',
-      LineNum: i,
-    })),
+    Attachments2_Lines: fileEntries.map((f, i) => {
+      // Ensure SourcePath has no trailing separator
+      const srcPath = (f.sourcePath || '').replace(/[/\\]+$/, '');
+      return {
+        SourcePath: srcPath,
+        FileName: f.fileName,
+        FileExtension: f.fileExtension,
+        Override: 'tYES',
+        LineNum: i,
+      };
+    }),
   };
 
   console.log('[SAP] Creating SourcePath attachment with', fileEntries.length, 'file(s)');
+  console.log('[SAP] Attachments2 payload:', JSON.stringify(payload, null, 2));
   const { data } = await sapRequestWithRetry(
     'POST', '/b1s/v1/Attachments2', payload, cookies, 2, agent
   );

@@ -262,6 +262,29 @@ export async function POST(request, { params }) {
 
         console.log('[SAP Push] Stage 1 complete. SAP-generated CardCode:', createdCardCode);
 
+        // ====== POST-CREATION ATTACHMENT RETRY ======
+        // If attachment wasn't linked during creation but files are on share, retry SourcePath
+        if (!attachmentEntry && filesWrittenToShare.length > 0) {
+          try {
+            console.log(`[SAP Push] Retrying SourcePath attachment after BP creation (${filesWrittenToShare.length} file(s))...`);
+            const retryAgent = createPostAgent();
+            try {
+              attachmentEntry = await createAttachmentFromPath(filesWrittenToShare, cookies, retryAgent);
+              if (attachmentEntry) {
+                console.log('[SAP Push] SourcePath retry success! AbsoluteEntry:', attachmentEntry, '— PATCHing onto BP...');
+                await updateBusinessPartner(createdCardCode, { AttachmentEntry: attachmentEntry }, cookies, agent);
+                stageResults.attachments = `sourcepath success after BP creation (entry: ${attachmentEntry})`;
+                console.log('[SAP Push] Attachment linked to BP:', createdCardCode);
+              }
+            } finally {
+              try { retryAgent.destroy(); } catch { /* ignore */ }
+            }
+          } catch (retryErr) {
+            console.warn('[SAP Push] Post-creation SourcePath retry failed:', retryErr.message);
+            attachmentWarnings.push(`Post-creation SourcePath retry: ${retryErr.message}`);
+          }
+        }
+
         // ====== STAGE 2: PATCH in addresses (if not minimal) ======
         if (!minimal) {
           const addressPayload = mapKycToAddresses(formData, kyc, createdCardCode);
