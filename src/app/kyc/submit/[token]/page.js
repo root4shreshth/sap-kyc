@@ -249,7 +249,7 @@ function KycPortalContent({ token }) {
           <img src={info.companyProfile?.logoUrl || '/logo.png'} alt="Company" style={{ height: 60, marginBottom: 8 }} onError={(e) => { e.target.src = '/logo.png'; }} />
           <h1 style={{ fontSize: 22, color: 'var(--navy)' }}>KYC / KYS Application Form</h1>
           <p style={{ color: 'var(--gray-500)', marginTop: 4, fontSize: 14 }}>
-            {info.companyProfile?.name || 'Alamir International Trading L.L.C'}
+            {info.companyProfile?.name || 'AL AMIR GROUP HOLDING COMPANY.'}
           </p>
         </div>
 

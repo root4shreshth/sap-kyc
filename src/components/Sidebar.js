@@ -32,8 +32,8 @@ export default function Sidebar({ user, onLogout }) {
       {/* Brand */}
       <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
         <Link href="/dashboard" style={{ color: 'white', fontWeight: 700, fontSize: 18, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <img src="/logo.png" alt="Alamir" style={{ height: 28, borderRadius: 4 }} onError={(e) => { e.target.style.display = 'none'; }} />
-          Alamir Ops
+          <img src="/logo.png" alt="Al Amir" style={{ height: 28, borderRadius: 4 }} onError={(e) => { e.target.style.display = 'none'; }} />
+          Al Amir Ops
         </Link>
       </div>
 

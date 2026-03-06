@@ -38,7 +38,7 @@ const COMPLIANCE_CHECKS = [
 function buildGeminiPrompt(kyc, formData, docs) {
   const docList = docs.map(d => `- ${d.docType}: ${d.fileName}`).join('\n') || 'No documents uploaded';
 
-  return `You are a KYC/KYS compliance analyst for Alamir International Trading L.L.C, a food import/export company in Ajman Free Zone, UAE.
+  return `You are a KYC/KYS compliance analyst for AL AMIR GROUP HOLDING COMPANY., a food import/export company in Ajman Free Zone, UAE.
 
 Analyze the following KYC application and provide a compliance assessment for each check item.
 

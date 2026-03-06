@@ -73,7 +73,7 @@ function LoginForm() {
           <img src="/logo.png" alt="Al-Amir" style={{ height: 56, marginBottom: 8 }} />
           <h2 style={{ marginBottom: 4, color: 'var(--navy)' }}>Internal Login</h2>
           <p style={{ color: 'var(--gray-500)', fontSize: 14 }}>
-            Alamir Operations Platform
+            Al Amir Operations Platform
           </p>
         </div>
         <form onSubmit={handleSubmit}>

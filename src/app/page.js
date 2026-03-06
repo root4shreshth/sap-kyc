@@ -19,8 +19,8 @@ export default function Landing() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <img src="/logo.png" alt="Al-Amir" style={{ height: 42 }} />
           <div style={{ borderLeft: '1px solid #e2e8f0', paddingLeft: 12 }}>
-            <div style={{ fontWeight: 700, fontSize: 15, color: '#0f172a', lineHeight: 1.2 }}>Alamir International</div>
-            <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.2 }}>Trading L.L.C</div>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#0f172a', lineHeight: 1.2 }}>AL AMIR GROUP</div>
+            <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.2 }}>HOLDING COMPANY.</div>
           </div>
         </div>
         <Link href="/login" style={{
@@ -87,7 +87,7 @@ export default function Landing() {
             margin: '0 auto 40px',
           }}>
             Streamlined KYC verification, document management, and compliance
-            tracking for Alamir International Trading L.L.C — Food Import &amp; Export.
+            tracking for AL AMIR GROUP HOLDING COMPANY.
           </p>
 
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -166,7 +166,7 @@ export default function Landing() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
           <img src="/logo.png" alt="Al-Amir" style={{ height: 24 }} />
-          <span style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>Alamir International Trading L.L.C</span>
+          <span style={{ fontWeight: 600, fontSize: 13, color: '#0f172a' }}>AL AMIR GROUP HOLDING COMPANY.</span>
         </div>
         <p style={{ fontSize: 12, color: '#94a3b8' }}>
           Ajman Free Zone, United Arab Emirates &nbsp;|&nbsp; alamir.ae &nbsp;|&nbsp; Internal Use Only

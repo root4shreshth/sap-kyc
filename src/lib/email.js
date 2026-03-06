@@ -23,10 +23,10 @@ export async function sendKycInvite({ to, cc, clientName, companyName, link, com
     console.log('[DEMO] KYC invite email skipped. Link:', link);
     return;
   }
-  const senderName = companyProfile?.emailSenderName || 'Alamir Operations';
-  const brandName = companyProfile?.name || 'Alamir International Trading';
+  const senderName = companyProfile?.emailSenderName || 'Al Amir Operations';
+  const brandName = companyProfile?.name || 'AL AMIR GROUP HOLDING COMPANY.';
   const btnColor = companyProfile?.primaryColor || '#2563eb';
-  const footer = companyProfile?.footerText || 'Alamir International Trading L.L.C';
+  const footer = companyProfile?.footerText || 'AL AMIR GROUP HOLDING COMPANY.';
 
   const transporter = getTransporter();
   const mailOptions = {
@@ -55,10 +55,10 @@ export async function sendKycReminder({ to, clientName, companyName, link, daysL
     console.log(`[DEMO] Reminder email skipped. ${clientName} → ${daysLeft} days left`);
     return;
   }
-  const senderName = companyProfile?.emailSenderName || 'Alamir Operations';
-  const brandName = companyProfile?.name || 'Alamir International Trading';
+  const senderName = companyProfile?.emailSenderName || 'Al Amir Operations';
+  const brandName = companyProfile?.name || 'AL AMIR GROUP HOLDING COMPANY.';
   const btnColor = companyProfile?.primaryColor || '#2563eb';
-  const footer = companyProfile?.footerText || 'Alamir International Trading L.L.C';
+  const footer = companyProfile?.footerText || 'AL AMIR GROUP HOLDING COMPANY.';
 
   const transporter = getTransporter();
   await transporter.sendMail({
@@ -86,9 +86,9 @@ export async function sendStatusUpdate({ to, clientName, companyName, status, re
     console.log(`[DEMO] Status email skipped. ${clientName} → ${status}`);
     return;
   }
-  const senderName = companyProfile?.emailSenderName || 'Alamir Operations';
-  const brandName = companyProfile?.name || 'Alamir International Trading';
-  const footer = companyProfile?.footerText || 'Alamir International Trading L.L.C';
+  const senderName = companyProfile?.emailSenderName || 'Al Amir Operations';
+  const brandName = companyProfile?.name || 'AL AMIR GROUP HOLDING COMPANY.';
+  const footer = companyProfile?.footerText || 'AL AMIR GROUP HOLDING COMPANY.';
 
   const transporter = getTransporter();
   const isApproved = status === 'Approved';

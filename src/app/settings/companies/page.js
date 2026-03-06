@@ -143,16 +143,16 @@ function CompanyProfilesContent() {
             <form onSubmit={handleSave}>
               <div className="form-group">
                 <label>Company Name <span style={{ color: 'var(--red)' }}>*</span></label>
-                <input value={form.name} onChange={e => set('name', e.target.value)} required placeholder="Alamir International Trading L.L.C" />
+                <input value={form.name} onChange={e => set('name', e.target.value)} required placeholder="AL AMIR GROUP HOLDING COMPANY." />
               </div>
               <div className="form-grid-2">
                 <div className="form-group">
                   <label>Short Name <span style={{ color: 'var(--red)' }}>*</span></label>
-                  <input value={form.shortName} onChange={e => set('shortName', e.target.value)} required placeholder="Alamir" />
+                  <input value={form.shortName} onChange={e => set('shortName', e.target.value)} required placeholder="Al Amir" />
                 </div>
                 <div className="form-group">
                   <label>Email Sender Name <span style={{ color: 'var(--red)' }}>*</span></label>
-                  <input value={form.emailSenderName} onChange={e => set('emailSenderName', e.target.value)} required placeholder="Alamir Operations" />
+                  <input value={form.emailSenderName} onChange={e => set('emailSenderName', e.target.value)} required placeholder="Al Amir Operations" />
                 </div>
               </div>
               <div className="form-group">
@@ -209,7 +209,7 @@ function CompanyProfilesContent() {
               </div>
               <div className="form-group">
                 <label>Email Footer Text</label>
-                <input value={form.footerText} onChange={e => set('footerText', e.target.value)} placeholder="Alamir International Trading L.L.C" />
+                <input value={form.footerText} onChange={e => set('footerText', e.target.value)} placeholder="AL AMIR GROUP HOLDING COMPANY." />
               </div>
               <div className="form-grid-2">
                 <div className="form-group">

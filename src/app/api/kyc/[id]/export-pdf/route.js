@@ -28,7 +28,7 @@ export async function GET(request, { params }) {
     // Header
     doc.setFontSize(18);
     doc.setTextColor(...NAVY);
-    doc.text('ALAMIR INTERNATIONAL TRADING L.L.C', 105, y, { align: 'center' });
+    doc.text('AL AMIR GROUP HOLDING COMPANY.', 105, y, { align: 'center' });
     y += 8;
     doc.setFontSize(12);
     doc.setTextColor(...BLUE);
@@ -276,7 +276,7 @@ export async function GET(request, { params }) {
       doc.setPage(i);
       doc.setFontSize(8);
       doc.setTextColor(150, 150, 150);
-      doc.text(`Alamir International Trading L.L.C — Confidential`, 15, 290);
+      doc.text(`AL AMIR GROUP HOLDING COMPANY. — Confidential`, 15, 290);
       doc.text(`Page ${i} of ${pageCount}`, 195, 290, { align: 'right' });
     }
 

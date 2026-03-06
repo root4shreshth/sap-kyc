@@ -22,7 +22,7 @@ export default function Navbar({ user, onLogout }) {
       justifyContent: 'space-between',
     }}>
       <Link href="/dashboard" style={{ color: 'white', fontWeight: 700, fontSize: 18 }}>
-        Alamir Ops
+        Al Amir Ops
       </Link>
       <div style={{ display: 'flex', alignItems: 'center', gap: 20, fontSize: 14 }}>
         <Link href="/dashboard" style={{ color: '#cbd5e1' }}>Dashboard</Link>

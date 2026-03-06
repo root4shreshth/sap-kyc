@@ -1,8 +1,8 @@
 import './globals.css';
 
 export const metadata = {
-  title: 'Alamir Operations',
-  description: 'Internal Operations Platform - Alamir International Trading L.L.C',
+  title: 'Al Amir Operations',
+  description: 'Internal Operations Platform - AL AMIR GROUP HOLDING COMPANY.',
 };
 
 export default function RootLayout({ children }) {
