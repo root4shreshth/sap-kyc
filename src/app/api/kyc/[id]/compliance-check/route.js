@@ -35,8 +35,29 @@ const COMPLIANCE_CHECKS = [
   { checkKey: 'declaration_signed', label: 'Declaration Signed & Authorized', category: 'Document Completeness' },
 ];
 
-function buildGeminiPrompt(kyc, formData, docs) {
+function buildGeminiPrompt(kyc, formData, docs, checksToRun, customChecks = []) {
   const docList = docs.map(d => `- ${d.docType}: ${d.fileName}`).join('\n') || 'No documents uploaded';
+
+  // Build the checks list from selected standard checks + custom checks
+  const checkLines = checksToRun.map((c, i) =>
+    `${i + 1}. ${c.checkKey}: ${c.label} (Category: ${c.category})`
+  );
+
+  // Append custom checks
+  const customCheckDefs = customChecks.map((desc, i) => {
+    const key = `custom_${i + 1}`;
+    return `${checksToRun.length + i + 1}. ${key}: ${desc} (Category: Custom Checks)`;
+  });
+
+  const allCheckLines = [...checkLines, ...customCheckDefs].join('\n');
+
+  let customSection = '';
+  if (customChecks.length > 0) {
+    customSection = `\n## Additional Custom Checks
+The following are additional checks requested by the reviewer. Analyze the available data and give your best assessment:
+${customChecks.map((desc, i) => `- custom_${i + 1}: ${desc}`).join('\n')}
+`;
+  }
 
   return `You are a KYC/KYS compliance analyst for AL AMIR GROUP HOLDING COMPANY., a food import/export company in Ajman Free Zone, UAE.
 
@@ -60,8 +81,8 @@ For EACH of the following checks, provide:
 2. **remarks**: Brief explanation (1-2 sentences) of why you gave that status
 
 Checks:
-${COMPLIANCE_CHECKS.map((c, i) => `${i + 1}. ${c.checkKey}: ${c.label} (Category: ${c.category})`).join('\n')}
-
+${allCheckLines}
+${customSection}
 ## Rules
 - "pass" = Information provided is satisfactory and complete
 - "warning" = Information is partially provided or has minor concerns
@@ -98,7 +119,31 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'GEMINI_API_KEY not configured. Add it to environment variables.' }, { status: 500 });
     }
 
-    const prompt = buildGeminiPrompt(kyc, formData, docs);
+    // Parse selected checks and custom checks from request body
+    let selectedChecks = null;
+    let customChecks = [];
+    try {
+      const body = await request.json();
+      selectedChecks = body.selectedChecks || null;
+      customChecks = body.customChecks || [];
+    } catch {
+      // No body or invalid JSON — run all checks (backward compat)
+    }
+
+    // Filter standard checks if selection was provided
+    let checksToRun;
+    if (selectedChecks && Array.isArray(selectedChecks) && selectedChecks.length > 0) {
+      const selectedSet = new Set(selectedChecks);
+      checksToRun = COMPLIANCE_CHECKS.filter(c => selectedSet.has(c.checkKey));
+    } else {
+      checksToRun = [...COMPLIANCE_CHECKS];
+    }
+
+    if (checksToRun.length === 0 && customChecks.length === 0) {
+      return NextResponse.json({ error: 'No checks selected to run' }, { status: 400 });
+    }
+
+    const prompt = buildGeminiPrompt(kyc, formData, docs, checksToRun, customChecks);
 
     // Call Gemini API — try models in order of preference
     const MODELS = [
@@ -147,7 +192,7 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'No Gemini model available. Check your API key and enabled models at https://aistudio.google.com' }, { status: 502 });
     }
 
-    console.log(`Compliance check using model: ${usedModel}`);
+    console.log(`Compliance check using model: ${usedModel} — ${checksToRun.length} standard + ${customChecks.length} custom checks`);
 
     let geminiData;
     try {
@@ -179,9 +224,7 @@ export async function POST(request, { params }) {
     // Parse JSON from response (strip markdown code blocks if present)
     let aiResults;
     try {
-      // Clean up: remove markdown fences, trim whitespace
       let jsonStr = rawText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      // Try to extract JSON array if wrapped in other text
       const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
       if (arrayMatch) {
         jsonStr = arrayMatch[0];
@@ -195,8 +238,18 @@ export async function POST(request, { params }) {
       return NextResponse.json({ error: 'Failed to parse AI response as JSON array' }, { status: 502 });
     }
 
-    // Merge AI results with check definitions and save
-    const checksToSave = COMPLIANCE_CHECKS.map(check => {
+    // Build the checks that were run (standard + custom)
+    const allChecksRun = [...checksToRun];
+    customChecks.forEach((desc, i) => {
+      allChecksRun.push({
+        checkKey: `custom_${i + 1}`,
+        label: desc,
+        category: 'Custom Checks',
+      });
+    });
+
+    // Merge AI results with check definitions
+    const newResults = allChecksRun.map(check => {
       const aiResult = aiResults.find(r => r.checkKey === check.checkKey);
       return {
         checkKey: check.checkKey,
@@ -207,7 +260,21 @@ export async function POST(request, { params }) {
       };
     });
 
-    await saveComplianceResults(id, checksToSave);
+    // Merge with existing results — preserve checks that weren't re-run
+    let existingResults = [];
+    try {
+      existingResults = await getComplianceResults(id) || [];
+    } catch { /* no existing results */ }
+
+    const ranKeys = new Set(allChecksRun.map(c => c.checkKey));
+    // Also remove old custom checks (they get replaced by new ones)
+    const preservedResults = existingResults.filter(r =>
+      !ranKeys.has(r.checkKey) && !r.checkKey.startsWith('custom_')
+    );
+
+    const mergedResults = [...preservedResults, ...newResults];
+
+    await saveComplianceResults(id, mergedResults);
 
     // Return saved results
     const saved = await getComplianceResults(id);

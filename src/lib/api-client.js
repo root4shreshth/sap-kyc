@@ -188,10 +188,11 @@ export const kycApi = {
   getComplianceResults: (id) =>
     fetch(`/api/kyc/${id}/compliance-check`, { headers: getHeaders() }).then(handleResponse),
 
-  runComplianceCheck: (id) =>
+  runComplianceCheck: (id, { selectedChecks, customChecks } = {}) =>
     fetch(`/api/kyc/${id}/compliance-check`, {
       method: 'POST',
       headers: getHeaders(),
+      body: JSON.stringify({ selectedChecks, customChecks }),
     }).then(handleResponse),
 
   overrideCompliance: (id, checkKey, adminOverride, adminNotes) =>
