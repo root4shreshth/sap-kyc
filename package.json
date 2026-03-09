@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "start:prod": "set HOSTNAME=0.0.0.0&& set PORT=3000&& node .next/standalone/server.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.95.3",
